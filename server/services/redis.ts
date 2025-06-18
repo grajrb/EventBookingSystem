@@ -5,68 +5,76 @@ const client = createClient({
 });
 
 client.on('error', (err) => {
-  console.error('Redis Client Error', err);
+  console.log('Redis not available, using database fallback');
 });
 
 let isConnected = false;
+let redisAvailable = true;
 
 export const connectRedis = async () => {
-  if (!isConnected) {
+  if (!isConnected && redisAvailable) {
     try {
       await client.connect();
       isConnected = true;
       console.log('Connected to Redis');
     } catch (error) {
-      console.error('Failed to connect to Redis:', error);
+      console.log('Redis not available, using database fallback');
+      redisAvailable = false;
+      isConnected = false;
     }
   }
 };
 
 export const getEventSlots = async (eventId: number): Promise<number | null> => {
+  if (!isConnected || !redisAvailable) return null;
   try {
     const slots = await client.get(`event:${eventId}:slots`);
     return slots ? parseInt(slots, 10) : null;
   } catch (error) {
-    console.error('Redis get error:', error);
+    redisAvailable = false;
     return null;
   }
 };
 
 export const setEventSlots = async (eventId: number, slots: number): Promise<void> => {
+  if (!isConnected || !redisAvailable) return;
   try {
     await client.set(`event:${eventId}:slots`, slots.toString(), {
       EX: 3600, // Expire after 1 hour
     });
   } catch (error) {
-    console.error('Redis set error:', error);
+    redisAvailable = false;
   }
 };
 
 export const decrementEventSlots = async (eventId: number): Promise<number | null> => {
+  if (!isConnected || !redisAvailable) return null;
   try {
     const result = await client.decr(`event:${eventId}:slots`);
     return result;
   } catch (error) {
-    console.error('Redis decrement error:', error);
+    redisAvailable = false;
     return null;
   }
 };
 
 export const incrementEventSlots = async (eventId: number): Promise<number | null> => {
+  if (!isConnected || !redisAvailable) return null;
   try {
     const result = await client.incr(`event:${eventId}:slots`);
     return result;
   } catch (error) {
-    console.error('Redis increment error:', error);
+    redisAvailable = false;
     return null;
   }
 };
 
 export const invalidateEventSlots = async (eventId: number): Promise<void> => {
+  if (!isConnected || !redisAvailable) return;
   try {
     await client.del(`event:${eventId}:slots`);
   } catch (error) {
-    console.error('Redis delete error:', error);
+    redisAvailable = false;
   }
 };
 

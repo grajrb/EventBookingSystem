@@ -57,10 +57,11 @@ export class DatabaseStorage implements IStorage {
     let whereClause = sql`1 = 1`;
     
     if (search) {
-      whereClause = or(
+      const searchClause = or(
         like(events.title, `%${search}%`),
         sql`${events.tags} && ${[search]}`
       );
+      whereClause = searchClause || sql`1 = 1`;
     }
 
     // Get events with booking counts
@@ -138,7 +139,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteEvent(id: number): Promise<boolean> {
     const result = await db.delete(events).where(eq(events.id, id));
-    return result.rowCount > 0;
+    return (result.rowCount || 0) > 0;
   }
 
   async updateEventSlots(eventId: number, newAvailableSlots: number): Promise<boolean> {
@@ -149,7 +150,7 @@ export class DatabaseStorage implements IStorage {
         updatedAt: new Date()
       })
       .where(eq(events.id, eventId));
-    return result.rowCount > 0;
+    return (result.rowCount || 0) > 0;
   }
 
   async createBooking(insertBooking: InsertBooking): Promise<Booking> {
@@ -268,7 +269,7 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .delete(bookings)
       .where(and(eq(bookings.userId, userId), eq(bookings.eventId, eventId)));
-    return result.rowCount > 0;
+    return (result.rowCount || 0) > 0;
   }
 
   async getAdminStats(): Promise<{
