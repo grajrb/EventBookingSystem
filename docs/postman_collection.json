@@ -1,0 +1,317 @@
+{
+  "info": {
+    "name": "Event Booking System API",
+    "description": "API collection for the Event Booking System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"user@example.com\",\n    \"password\": \"password123\",\n    \"name\": \"User Name\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Register a new user"
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"user@example.com\",\n    \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Login with email and password"
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Get the current user's profile"
+          }
+        }
+      ],
+      "description": "Endpoints for user authentication"
+    },
+    {
+      "name": "Events",
+      "item": [
+        {
+          "name": "Get Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events?page=1&limit=6&search=",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "6"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Get a list of events with pagination and search"
+          }
+        },
+        {
+          "name": "Get Event",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "1"]
+            },
+            "description": "Get a single event by ID"
+          }
+        },
+        {
+          "name": "Create Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"New Event\",\n    \"description\": \"Event description\",\n    \"location\": \"Event location\",\n    \"date\": \"2025-07-01T18:00:00.000Z\",\n    \"totalSlots\": 100,\n    \"image\": \"https://example.com/image.jpg\",\n    \"tags\": [\"Technology\", \"Workshop\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events"]
+            },
+            "description": "Create a new event (admin only)"
+          }
+        },
+        {
+          "name": "Update Event",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"Updated Event\",\n    \"totalSlots\": 150\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/events/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "1"]
+            },
+            "description": "Update an event (admin only)"
+          }
+        },
+        {
+          "name": "Delete Event",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "1"]
+            },
+            "description": "Delete an event (admin only)"
+          }
+        }
+      ],
+      "description": "Endpoints for event management"
+    },
+    {
+      "name": "Bookings",
+      "item": [
+        {
+          "name": "Book Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/1/book",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "1", "book"]
+            },
+            "description": "Book an event"
+          }
+        },
+        {
+          "name": "Cancel Booking",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/1/book",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "1", "book"]
+            },
+            "description": "Cancel a booking"
+          }
+        },
+        {
+          "name": "Get My Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/my",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "bookings", "my"]
+            },
+            "description": "Get user's bookings"
+          }
+        },
+        {
+          "name": "Get Event Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/1/bookings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "1", "bookings"]
+            },
+            "description": "Get bookings for a specific event (admin only)"
+          }
+        }
+      ],
+      "description": "Endpoints for booking management"
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Get Admin Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "stats"]
+            },
+            "description": "Get admin statistics"
+          }
+        }
+      ],
+      "description": "Admin-specific endpoints"
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "YOUR_JWT_TOKEN",
+      "type": "string"
+    }
+  ]
+}

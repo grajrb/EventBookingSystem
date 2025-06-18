@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "jest"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noImplicitAny": false
+  },
+  "include": ["tests/**/*", "server/**/*", "shared/**/*"],
+  "exclude": ["node_modules"]
+}

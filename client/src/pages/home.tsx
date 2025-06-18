@@ -15,7 +15,7 @@ import EventCard from "../components/event-card";
 import EventForm from "../components/event-form";
 import Pagination from "../components/pagination";
 import { eventsAPI } from "../lib/api";
-import { useAuth } from "../hooks/use-auth";
+import { useAuth } from "../hooks/use-auth.tsx";
 
 export default function Home() {
   const { user } = useAuth();

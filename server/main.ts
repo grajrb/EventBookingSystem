@@ -392,3 +392,5 @@ const server = createServer(app);
 server.listen(port, "0.0.0.0", () => {
   console.log(`EventHub server running on port ${port}`);
 });
+
+export { app };

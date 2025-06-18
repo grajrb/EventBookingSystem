@@ -68,6 +68,11 @@ export const eventsAPI = {
     const response = await apiRequest("DELETE", `/api/events/${id}/book`);
     return response.json();
   },
+  
+  getEventBookings: async (eventId: number): Promise<ApiResponse<Booking[]>> => {
+    const response = await apiRequest("GET", `/api/events/${eventId}/bookings`);
+    return response.json();
+  },
 };
 
 // Bookings API

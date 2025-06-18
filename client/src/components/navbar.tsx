@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useAuth } from "../hooks/use-auth";
+import { useAuth } from "../hooks/use-auth.tsx";
 
 export default function Navbar() {
   const [location] = useLocation();

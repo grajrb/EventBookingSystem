@@ -26,6 +26,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import EventForm from "../components/event-form";
+import AttendeeList from "../components/attendee-list";
 import { eventsAPI, adminAPI } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Event } from "../types";
@@ -36,6 +37,9 @@ export default function Admin() {
   const [isEventFormOpen, setIsEventFormOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | undefined>(undefined);
   const [search, setSearch] = useState("");
+  const [isAttendeeListOpen, setIsAttendeeListOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<Event>();
+  const [selectedEventAttendees, setSelectedEventAttendees] = useState<BookingWithDetails[]>([]);
 
   const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/admin/stats"],
@@ -45,6 +49,12 @@ export default function Admin() {
   const { data: eventsData, isLoading: eventsLoading } = useQuery({
     queryKey: ["/api/events", 1, search],
     queryFn: () => eventsAPI.getEvents(1, 50, search || undefined),
+  });
+
+  const { data: attendeesData } = useQuery({
+    queryKey: ["/api/events/bookings", selectedEvent?.id],
+    queryFn: () => selectedEvent ? eventsAPI.getEventBookings(selectedEvent.id) : null,
+    enabled: !!selectedEvent,
   });
 
   const deleteMutation = useMutation({
@@ -97,12 +107,75 @@ export default function Admin() {
     setEditingEvent(undefined);
   };
 
-  const exportToCSV = () => {
-    // Mock CSV export functionality
-    toast({
-      title: "Export Started",
-      description: "Your CSV file will be ready shortly",
-    });
+  const exportToCSV = async (eventId?: number) => {
+    try {
+      let bookings;
+      let filename;
+      
+      if (eventId) {
+        // Export bookings for a specific event
+        const response = await eventsAPI.getEventBookings(eventId);
+        bookings = response.data;
+        const event = events.find(e => e.id === eventId);
+        filename = `bookings-${event?.title.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.csv`;
+      } else {
+        // Export all bookings
+        const eventsWithBookings = await Promise.all(
+          events.map(async (event) => {
+            const response = await eventsAPI.getEventBookings(event.id);
+            return response.data.map(booking => ({
+              ...booking,
+              eventTitle: event.title,
+              eventDate: event.date
+            }));
+          })
+        );
+        bookings = eventsWithBookings.flat();
+        filename = `all-bookings-${new Date().toISOString().split('T')[0]}.csv`;
+      }
+      
+      // Create CSV content
+      const headers = ['Booking ID', 'Event', 'Date', 'User Name', 'User Email', 'Status', 'Booked On'];
+      const csvContent = [
+        headers.join(','),
+        ...bookings.map((booking: any) => [
+          booking.id,
+          booking.event?.title || booking.eventTitle,
+          new Date(booking.event?.date || booking.eventDate).toLocaleDateString(),
+          booking.user?.name,
+          booking.user?.email,
+          booking.status,
+          new Date(booking.createdAt).toLocaleDateString()
+        ].join(','))
+      ].join('\n');
+      
+      // Download the CSV file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast({
+        title: "Export Successful",
+        description: "Your bookings have been exported to CSV",
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "There was an error exporting the bookings",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleViewAttendees = (event: Event) => {
+    setSelectedEvent(event);
+    setIsAttendeeListOpen(true);
   };
 
   if (statsLoading || eventsLoading) {
@@ -134,7 +207,15 @@ export default function Admin() {
               Manage events and view booking analytics
             </p>
           </div>
-          <div className="mt-4 sm:mt-0">
+          <div className="mt-4 sm:mt-0 flex gap-2">
+            <Button
+              onClick={() => exportToCSV()}
+              variant="outline"
+              className="shadow-sm"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export All Bookings
+            </Button>
             <Button
               onClick={() => setIsEventFormOpen(true)}
               className="shadow-sm"
@@ -217,9 +298,9 @@ export default function Admin() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
             <CardTitle>Event Management</CardTitle>
             <div className="flex items-center space-x-3">
-              <Button variant="outline" size="sm" onClick={exportToCSV}>
+              <Button variant="outline" size="sm" onClick={() => exportToCSV()}>
                 <Download className="mr-1 h-4 w-4" />
-                Export CSV
+                Export All Bookings CSV
               </Button>
               <div className="relative">
                 <Input
@@ -305,10 +386,29 @@ export default function Admin() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleEdit(event)}
+                                title="Edit Event"
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              <Button variant="ghost" size="sm">
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => exportToCSV(event.id)}
+                                title="Export Bookings"
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedEvent(event);
+                                  setSelectedEventAttendees(attendeesData?.data || []);
+                                  setIsAttendeeListOpen(true);
+                                  handleViewAttendees(event);
+                                }}
+                                title="View Attendees"
+                              >
                                 <UserCheck className="h-4 w-4" />
                               </Button>
                               <AlertDialog>
@@ -352,6 +452,17 @@ export default function Admin() {
           isOpen={isEventFormOpen}
           onClose={handleCloseForm}
           event={editingEvent}
+        />
+
+        {/* Attendee List Modal */}
+        <AttendeeList
+          isOpen={isAttendeeListOpen}
+          onClose={() => {
+            setIsAttendeeListOpen(false);
+            setSelectedEvent(undefined);
+          }}
+          attendees={attendeesData?.data || []}
+          eventTitle={selectedEvent?.title || ""}
         />
       </main>
     </div>

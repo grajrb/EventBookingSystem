@@ -1,19 +1,64 @@
 import { Calendar, MapPin, Users, Info } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { eventsAPI } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useWebSocket, WS_EVENTS } from "@/hooks/use-websocket";
 import type { Event } from "../types";
 
 interface EventCardProps {
   event: Event;
 }
 
-export default function EventCard({ event }: EventCardProps) {
+export default function EventCard({ event: initialEvent }: EventCardProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [event, setEvent] = useState<Event>(initialEvent);
+  const { lastMessage } = useWebSocket();
+  const [recentlyUpdated, setRecentlyUpdated] = useState(false);
+  const timeoutRef = useRef<number | null>(null);
+  
+  // Update the event when the props change
+  useEffect(() => {
+    setEvent(initialEvent);
+  }, [initialEvent]);
+  
+  // Listen for real-time updates via WebSocket
+  useEffect(() => {
+    if (lastMessage?.type === WS_EVENTS.SLOT_UPDATE && 
+        lastMessage.payload.eventId === event.id) {
+      setEvent(prev => ({
+        ...prev,
+        availableSlots: lastMessage.payload.availableSlots
+      }));
+      
+      // Show update indicator
+      setRecentlyUpdated(true);
+      
+      // Clear existing timeout
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+      }
+      
+      // Hide update indicator after 3 seconds
+      timeoutRef.current = window.setTimeout(() => {
+        setRecentlyUpdated(false);
+        timeoutRef.current = null;
+      }, 3000);
+    }
+  }, [lastMessage, event.id]);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   const bookMutation = useMutation({
     mutationFn: () => eventsAPI.bookEvent(event.id),
@@ -48,7 +93,7 @@ export default function EventCard({ event }: EventCardProps) {
   const isAlreadyBooked = event.isBooked;
 
   return (
-    <Card className="overflow-hidden hover:shadow-md transition-shadow duration-200">
+    <Card className={`overflow-hidden hover:shadow-md transition-all duration-200 ${recentlyUpdated ? 'ring-2 ring-primary/50' : ''}`}>
       <div className="w-full h-48 bg-slate-200 flex items-center justify-center">
         {event.image ? (
           <img
@@ -99,7 +144,7 @@ export default function EventCard({ event }: EventCardProps) {
               <span className="text-red-600 font-medium">Fully Booked</span>
             ) : (
               <>
-                <span className="text-emerald-600 font-medium">
+                <span className={`font-medium ${recentlyUpdated ? 'text-primary animate-pulse' : 'text-emerald-600'}`}>
                   {event.availableSlots} spots available
                 </span>
                 <span className="text-slate-500 ml-1">

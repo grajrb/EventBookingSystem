@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useAuth } from "../hooks/use-auth";
+import { useAuth } from "../hooks/use-auth.tsx";
 import { useToast } from "@/hooks/use-toast";
 
 const loginSchema = z.object({

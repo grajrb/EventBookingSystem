@@ -1,0 +1,23 @@
+{
+  "preset": "ts-jest",
+  "testEnvironment": "node",
+  "roots": ["<rootDir>/tests"],
+  "transform": {
+    "^.+\\.tsx?$": ["ts-jest", {
+      "tsconfig": "tsconfig.test.json"
+    }]
+  },
+  "moduleNameMapper": {
+    "@shared/(.*)": "<rootDir>/shared/$1",
+    "@server/(.*)": "<rootDir>/server/$1"
+  },
+  "setupFilesAfterEnv": ["<rootDir>/tests/setup.ts"],
+  "collectCoverage": true,
+  "collectCoverageFrom": [
+    "server/**/*.ts",
+    "!server/index.ts",
+    "!server/vite.ts"
+  ],
+  "coverageDirectory": "coverage",
+  "coverageReporters": ["text", "lcov"]
+}

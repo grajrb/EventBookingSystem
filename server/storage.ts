@@ -34,21 +34,36 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user || undefined;
+    try {
+      const [user] = await db.select().from(users).where(eq(users.id, id));
+      return user || undefined;
+    } catch (error) {
+      console.error('Database error in getUser:', error);
+      throw new Error(`Failed to get user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user || undefined;
+    try {
+      const [user] = await db.select().from(users).where(eq(users.email, email));
+      return user || undefined;
+    } catch (error) {
+      console.error('Database error in getUserByEmail:', error);
+      throw new Error(`Failed to get user by email: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(insertUser)
-      .returning();
-    return user;
+    try {
+      const [user] = await db
+        .insert(users)
+        .values(insertUser)
+        .returning();
+      return user;
+    } catch (error) {
+      console.error('Database error in createUser:', error);
+      throw new Error(`Failed to create user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async getEvents(page: number, limit: number, search?: string, userId?: number): Promise<{ events: EventWithBookings[], total: number }> {
@@ -101,7 +116,7 @@ export class DatabaseStorage implements IStorage {
     ]);
 
     return {
-      events: eventsResult.map(event => ({
+      events: eventsResult.map((event: any) => ({
         ...event,
         bookingCount: Number(event.bookingCount),
         isBooked: Boolean(event.isBooked),
@@ -198,7 +213,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(bookings.userId, userId))
       .orderBy(desc(events.date));
 
-    return result.map(row => ({
+    return result.map((row: any) => ({
       id: row.id,
       userId: row.userId,
       eventId: row.eventId,
@@ -246,7 +261,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(bookings.eventId, eventId))
       .orderBy(desc(bookings.createdAt));
 
-    return result.map(row => ({
+    return result.map((row: any) => ({
       id: row.id,
       userId: row.userId,
       eventId: row.eventId,
@@ -311,6 +326,10 @@ export class DatabaseStorage implements IStorage {
       thisMonth: Number(thisMonthResult.count),
       occupancyRate,
     };
+  }
+
+  async updateUser(id: number, updates: Partial<User>): Promise<void> {
+    await db.update(users).set(updates).where(eq(users.id, id));
   }
 }
 

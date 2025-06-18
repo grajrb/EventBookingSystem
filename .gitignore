@@ -1,6 +1,66 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Testing
+coverage/
+*.test.ts.bak
+*.test.ts.fixed*
+
+# Production
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Cache
+.cache/
+.npm/
+.eslintcache
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Local development
+.env
+
+# Debug files
+debug.ts
+
+# Deployment
+.vercel
+.azure
+
+# Build output
+/dist
+/build
+/.next
+
+# Generated files
 server/public
 vite.config.ts.*
 *.tar.gz
