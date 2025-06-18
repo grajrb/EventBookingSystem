@@ -8,8 +8,12 @@ import { errorHandler, notFound, createError } from "./middleware/errorHandler";
 import { insertUserSchema, insertEventSchema, insertBookingSchema, loginSchema, registerSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Initialize Redis connection
-  await connectRedis();
+  // Initialize Redis connection (optional)
+  try {
+    await connectRedis();
+  } catch (error) {
+    console.log('Redis connection failed, continuing without Redis caching');
+  }
 
   // Auth routes
   app.post("/api/auth/register", async (req, res, next) => {
