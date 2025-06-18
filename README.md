@@ -2,6 +2,14 @@
 
 A full-stack application for browsing and booking event slots, with real-time availability updates.
 
+[![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-blue?style=for-the-badge&logo=github)](https://github.com/grajrb/EventBookingSystem)
+
+## Repository
+
+- **GitHub**: [grajrb/EventBookingSystem](https://github.com/grajrb/EventBookingSystem)
+- **Last Updated**: June 18, 2025
+- **License**: [MIT](LICENSE)
+
 ## Features
 
 - User authentication (signup/login)
@@ -35,8 +43,8 @@ A full-stack application for browsing and booking event slots, with real-time av
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/event-booking-system.git
-   cd event-booking-system
+   git clone https://github.com/grajrb/EventBookingSystem.git
+   cd EventBookingSystem
    ```
 
 2. Install dependencies:
