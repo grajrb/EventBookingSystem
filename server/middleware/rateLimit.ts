@@ -1,6 +1,6 @@
 import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
-import { redis } from '../services/redis';
+import { redisClient as redis } from '../services/redis';
 
 // Basic rate limiter for all routes
 export const baseLimiter = rateLimit({

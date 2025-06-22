@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -53,7 +53,7 @@ export default function EventForm({ isOpen, onClose, event }: EventFormProps) {
           location: event.location,
           date: new Date(event.date).toISOString().slice(0, 16),
           totalSlots: event.totalSlots,
-          tags: event.tags.join(", "),
+          tags: event.tags ? event.tags.join(", ") : "",
         }
       : {
           title: "",
@@ -64,6 +64,30 @@ export default function EventForm({ isOpen, onClose, event }: EventFormProps) {
           tags: "",
         },
   });
+
+  useEffect(() => {
+    if (isOpen) {
+      if (event) {
+        reset({
+          title: event.title,
+          description: event.description,
+          location: event.location,
+          date: new Date(event.date).toISOString().slice(0, 16),
+          totalSlots: event.totalSlots,
+          tags: event.tags ? event.tags.join(", ") : "",
+        });
+      } else {
+        reset({
+          title: "",
+          description: "",
+          location: "",
+          date: "",
+          totalSlots: 1,
+          tags: "",
+        });
+      }
+    }
+  }, [event, isOpen, reset]);
 
   const createMutation = useMutation({
     mutationFn: eventsAPI.createEvent,
@@ -111,7 +135,7 @@ export default function EventForm({ isOpen, onClose, event }: EventFormProps) {
       tags: data.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
     };
 
-    if (isEditing) {
+    if (isEditing && event) {
       updateMutation.mutate(eventData);
     } else {
       createMutation.mutate(eventData);

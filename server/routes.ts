@@ -25,6 +25,9 @@ import { insertUserSchema, insertEventSchema, insertBookingSchema, loginSchema, 
 import { broadcast, WS_EVENTS } from "./websocket";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Create HTTP server
+  const server = createServer(app);
+  
   // Initialize Redis connection (optional)
   try {
     await connectRedis();
@@ -40,7 +43,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user already exists
       const existingUser = await storage.getUserByEmail(userData.email);
       if (existingUser) {
-        throw createError("User already exists with this email", 400);
+        throw createError("User already exists", 400);
       }
 
       // Hash password
@@ -108,13 +111,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const user = await storage.getUserByEmail(email);
         if (!user) {
-          throw createError("Invalid email or password", 401);
+          throw createError("Invalid credentials", 401);
         }
 
         // Check password
         const isPasswordValid = await comparePassword(password, user.password);
         if (!isPasswordValid) {
-          throw createError("Invalid email or password", 401);
+          throw createError("Invalid credentials", 401);
         }
 
         // Generate token
@@ -271,12 +274,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/events", authenticate, requireAdmin, async (req, res, next) => {
     try {
-      const eventData = insertEventSchema.parse(req.body);
-      
-      const event = await storage.createEvent({
-        ...eventData,
+      let dateValue = req.body.date;
+      if (typeof dateValue === 'string') {
+        dateValue = new Date(dateValue);
+      }
+      if (!(dateValue instanceof Date) || isNaN(dateValue.getTime())) {
+        throw createError('Invalid date format', 400);
+      }
+      const eventData = insertEventSchema.parse({
+        ...req.body,
+        date: dateValue,
         createdBy: req.user!.id,
       });
+      const event = await storage.createEvent(eventData);
 
       // Initialize cache
       await setEventSlots(event.id, event.availableSlots);
@@ -460,111 +470,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw createError("Failed to cancel booking", 500);
       }
 
-      // Increment available slots
-      await incrementEventSlots(eventId);
+          // Increment available slots
+          await incrementEventSlots(eventId);
+          
+          // Update database
+          const event = await storage.getEvent(eventId);
+          if (event) {
+            const cachedSlots = await getEventSlots(eventId);
+            if (cachedSlots !== null) {
+              await storage.updateEventSlots(eventId, cachedSlots);
+            }
+          }
+          
+          // Invalidate caches
+          await invalidateEventData(eventId);
+          await invalidateEventLists();
+          await invalidateAdminStats();
+    
+          // Broadcast slot update via WebSocket
+          const newSlots = await getEventSlots(eventId);
+          broadcast({
+            type: WS_EVENTS.SLOT_UPDATE,
+            payload: {
+              eventId,
+              availableSlots: newSlots,
+            },
+          });
+    
+          res.json({
+            success: true,
+            message: "Booking cancelled successfully",
+          });
+        } catch (error) {
+          next(error);
+        }
+      });
+    
+      // Health check or root route
+      app.get('/', (req, res) => {
+        res.send('Event Booking System API is running.');
+      });
+
+      // Error handling middleware
+      app.use(notFound);
+      app.use(errorHandler);
       
-      // Update database
-      const event = await storage.getEvent(eventId);
-      if (event) {
-        const newSlots = event.availableSlots + 1;
-        await storage.updateEventSlots(eventId, newSlots);
-        
-        // Invalidate event data cache but keep the updated slots
-        await invalidateEventData(eventId);
-        
-        // Invalidate event lists
-        await invalidateEventLists();
-        
-        // Invalidate admin stats
-        await invalidateAdminStats();
-        
-        // Broadcast slot update via WebSocket
-        broadcast({
-          type: WS_EVENTS.SLOT_UPDATE,
-          payload: {
-            eventId,
-            availableSlots: newSlots,
-          },
-        });
-        
-        // Broadcast booking cancelled event
-        broadcast({
-          type: WS_EVENTS.BOOKING_CANCELLED,
-          payload: {
-            eventId,
-            userId,
-            bookingId: booking.id,
-          },
-        });
-      }
-
-      res.json({
-        success: true,
-        message: "Booking cancelled successfully",
-      });
-    } catch (error) {
-      next(error);
+      return server;
     }
-  });
-
-  app.get("/api/bookings/my", authenticate, async (req, res, next) => {
-    try {
-      const userId = req.user!.id;
-      const bookings = await storage.getUserBookings(userId);
-
-      res.json({
-        success: true,
-        data: bookings,
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  app.get("/api/events/:id/bookings", authenticate, requireAdmin, async (req, res, next) => {
-    try {
-      const eventId = parseInt(req.params.id);
-      const bookings = await storage.getEventBookings(eventId);
-
-      res.json({
-        success: true,
-        data: bookings,
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  // Admin routes
-  app.get("/api/admin/stats", authenticate, requireAdmin, async (req, res, next) => {
-    try {
-      // Try to get stats from cache first
-      const cachedStats = await getAdminStats();
-      if (cachedStats) {
-        return res.json({
-          success: true,
-          data: cachedStats,
-        });
-      }
-
-      // If not in cache, get from database
-      const stats = await storage.getAdminStats();
-      
-      // Cache the stats
-      await setAdminStats(stats);
-
-      res.json({
-        success: true,
-        data: stats,
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  // Error handling middleware is now moved to index.ts
-  // so that static files can be served before 404 handling
-
-  const httpServer = createServer(app);
-  return httpServer;
-}

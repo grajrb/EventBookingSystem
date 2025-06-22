@@ -1,5 +1,10 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+// API base URL configuration
+export const API_BASE_URL = import.meta.env.PROD 
+  ? 'https://event-booking-system-api.onrender.com' // Update this with your actual production API URL when deployed
+  : '';
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -14,7 +19,7 @@ export async function apiRequest(
 ): Promise<Response> {
   const token = localStorage.getItem("token");
   
-  const res = await fetch(url, {
+  const res = await fetch(`${API_BASE_URL}${url}`, {
     method,
     headers: {
       ...(data ? { "Content-Type": "application/json" } : {}),
@@ -36,7 +41,7 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const token = localStorage.getItem("token");
     
-    const res = await fetch(queryKey[0] as string, {
+    const res = await fetch(`${API_BASE_URL}${queryKey[0]}` as string, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },

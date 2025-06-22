@@ -37,12 +37,18 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
 
   // Default error
   const statusCode = error.statusCode || 500;
-  const message = error.message || 'Internal Server Error';
+  let message;
+  if (error.statusCode === 401) {
+    message = 'Invalid credentials';
+  } else if (error.statusCode === 400 && error.message && error.message.toLowerCase().includes('user already exists')) {
+    message = 'User already exists';
+  } else {
+    message = error.message || 'Internal Server Error';
+  }
 
   res.status(statusCode).json({
     success: false,
     message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 };
 
