@@ -14,41 +14,48 @@ export const createError = (message: string, statusCode: number = 500): AppError
 };
 
 export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
-  let error = { ...err };
-  error.message = err.message;
+  const isZod = err instanceof ZodError;
+  const statusCode = err.statusCode || (isZod ? 400 : 500);
 
-  // Log error
-  console.error(err);
+  let code: string | undefined = err.code;
+  const details: any[] = [];
+  let message = err.message || 'Internal Server Error';
 
-  // Zod validation errors
-  if (err instanceof ZodError) {
-    const message = err.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
-    error = createError(`Validation Error: ${message}`, 400);
+  if (isZod) {
+    code = 'VALIDATION_ERROR';
+    message = 'Validation failed';
+    for (const issue of err.errors) {
+      details.push({ path: issue.path, message: issue.message });
+    }
   }
 
-  // Database constraint errors
-  if (err.code === '23505') { // PostgreSQL unique violation
-    error = createError('Duplicate field value entered', 400);
+  if (err.code === '23505') {
+    code = 'UNIQUE_VIOLATION';
+    message = 'Duplicate field value entered';
   }
-
-  if (err.code === '23503') { // PostgreSQL foreign key violation
-    error = createError('Referenced record not found', 400);
+  if (err.code === '23503') {
+    code = 'FOREIGN_KEY_VIOLATION';
+    message = 'Referenced record not found';
   }
-
-  // Default error
-  const statusCode = error.statusCode || 500;
-  let message;
-  if (error.statusCode === 401) {
+  if (statusCode === 401 && !isZod) {
     message = 'Invalid credentials';
-  } else if (error.statusCode === 400 && error.message && error.message.toLowerCase().includes('user already exists')) {
+    code = code || 'UNAUTHORIZED';
+  }
+  if (statusCode === 404 && !isZod) {
+    code = code || 'NOT_FOUND';
+  }
+  if (statusCode === 400 && /user already exists/i.test(message)) {
+    code = code || 'USER_EXISTS';
     message = 'User already exists';
-  } else {
-    message = error.message || 'Internal Server Error';
   }
 
   res.status(statusCode).json({
     success: false,
-    message,
+    error: {
+      message,
+      code: code || 'ERROR',
+      details: details.length ? details : undefined,
+    },
   });
 };
 

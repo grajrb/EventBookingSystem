@@ -29,49 +29,44 @@ export const useWebSocket = () => {
     return 'ws://localhost:5000/ws';
   };
 
+  const attemptRef = useRef(0);
   const connect = useCallback(() => {
+    if (socketRef.current && (socketRef.current.readyState === WebSocket.OPEN || socketRef.current.readyState === WebSocket.CONNECTING)) {
+      return; // already connecting/connected
+    }
     try {
       const socket = new WebSocket(getWebSocketUrl());
-      
+      socketRef.current = socket;
       socket.onopen = () => {
-        console.log('WebSocket connected');
+        attemptRef.current = 0;
         setIsConnected(true);
-        // Clear any reconnect timeout
         if (reconnectTimeoutRef.current) {
           clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = null;
         }
+        console.log('WebSocket connected');
       };
-      
       socket.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data) as WebSocketMessage;
-          setLastMessage(message);
-        } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
-        }
+        try { setLastMessage(JSON.parse(event.data) as WebSocketMessage); } catch (e) { console.error('WS parse error', e); }
       };
-      
       socket.onclose = (event) => {
-        console.log('WebSocket disconnected, attempting to reconnect...', { code: event.code, reason: event.reason });
         setIsConnected(false);
-        
-        // Attempt to reconnect after a delay
+        const attempt = ++attemptRef.current;
+        const base = Math.min(30000, 1000 * Math.pow(2, attempt));
+        const jitter = Math.random() * 500;
         if (!reconnectTimeoutRef.current) {
           reconnectTimeoutRef.current = window.setTimeout(() => {
             reconnectTimeoutRef.current = null;
             connect();
-          }, 3000); // Reconnect after 3 seconds
+          }, base + jitter);
         }
+        console.log('WebSocket disconnected', { code: event.code, reason: event.reason, retryIn: base });
       };
-      
       socket.onerror = (error) => {
         console.error('WebSocket error:', error);
       };
-      
-      socketRef.current = socket;
     } catch (error) {
-      console.error('Failed to connect to WebSocket:', error);
+      console.error('Failed to connect WS:', error);
       setIsConnected(false);
     }
   }, []);

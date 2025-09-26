@@ -11,6 +11,9 @@ export const users = pgTable("users", {
   isAdmin: boolean("is_admin").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastLogin: timestamp("last_login"),
+  bio: text('bio'),
+  avatarUrl: text('avatar_url'),
+  preferences: text('preferences'), // JSON string
 });
 
 export const events = pgTable("events", {
@@ -46,6 +49,16 @@ export const auditLogs = pgTable('audit_logs', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const notifications = pgTable('notifications', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id),
+  type: varchar('type', { length: 50 }).notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  message: text('message').notNull(),
+  read: boolean('read').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   events: many(events),
@@ -69,6 +82,13 @@ export const bookingsRelations = relations(bookings, ({ one }) => ({
     fields: [bookings.eventId],
     references: [events.id],
   }),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id]
+  })
 }));
 
 // Zod schemas
@@ -101,14 +121,30 @@ export const registerSchema = z.object({
   name: z.string().min(2),
 });
 
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  createdAt: true,
+  read: true,
+});
+
+export const profileUpdateSchema = z.object({
+  name: z.string().min(2).optional(),
+  bio: z.string().max(1000).optional(),
+  avatarUrl: z.string().url().max(500).optional(),
+  preferences: z.record(z.any()).optional(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Event = typeof events.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type LoginRequest = z.infer<typeof loginSchema>;
 export type RegisterRequest = z.infer<typeof registerSchema>;
+export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
 
 // Event with booking count
 export type EventWithBookings = Event & {

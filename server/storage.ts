@@ -1,4 +1,4 @@
-import { users, events, bookings, type User, type Event, type Booking, type InsertUser, type InsertEvent, type InsertBooking, type EventWithBookings, type BookingWithDetails } from "@shared/schema";
+import { users, events, bookings, notifications, type User, type Event, type Booking, type Notification, type InsertUser, type InsertEvent, type InsertBooking, type InsertNotification, type EventWithBookings, type BookingWithDetails, type ProfileUpdate } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, like, sql, count } from "drizzle-orm";
 
@@ -9,6 +9,9 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   listUsers(): Promise<User[]>;
   paginateUsers(opts: { page: number; limit: number; search?: string; sortField: string; direction: 'asc' | 'desc'; }): Promise<{ users: User[]; total: number }>;
+  updateUser(id: number, updates: Partial<User>): Promise<void>;
+  deleteUser(id: number): Promise<boolean>;
+  updateUserProfile(id: number, profile: ProfileUpdate): Promise<User | undefined>;
 
   // Event operations
   getEvents(page: number, limit: number, search?: string, userId?: number): Promise<{ events: EventWithBookings[], total: number }>;
@@ -32,6 +35,13 @@ export interface IStorage {
     thisMonth: number;
     occupancyRate: number;
   }>;
+
+  // Notification operations
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  listNotifications(userId: number, page: number, limit: number): Promise<{ notifications: Notification[]; total: number }>;
+  markNotificationRead(userId: number, id: number): Promise<boolean>;
+  markAllNotificationsRead(userId: number): Promise<number>;
+  unreadCount(userId: number): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -353,6 +363,50 @@ export class DatabaseStorage implements IStorage {
 
   async updateUser(id: number, updates: Partial<User>): Promise<void> {
     await db.update(users).set(updates).where(eq(users.id, id));
+  }
+
+  async deleteUser(id: number): Promise<boolean> {
+    const result = await db.delete(users).where(eq(users.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  async updateUserProfile(id: number, profile: ProfileUpdate): Promise<User | undefined> {
+    const updates: any = { ...profile };
+    if (profile.preferences) {
+      updates.preferences = JSON.stringify(profile.preferences);
+    }
+    const [user] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    return user || undefined;
+  }
+
+  async createNotification(insertNotification: InsertNotification): Promise<Notification> {
+    const [notif] = await db.insert(notifications).values(insertNotification).returning();
+    return notif;
+  }
+
+  async listNotifications(userId: number, page: number, limit: number): Promise<{ notifications: Notification[]; total: number }> {
+    const offset = (page - 1) * limit;
+    const rows = await db.select().from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(limit).offset(offset);
+    const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(notifications).where(eq(notifications.userId, userId));
+    return { notifications: rows, total: Number(countRow.count) };
+  }
+
+  async markNotificationRead(userId: number, id: number): Promise<boolean> {
+    const result = await db.update(notifications).set({ read: true }).where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
+    return (result.rowCount || 0) > 0;
+  }
+
+  async markAllNotificationsRead(userId: number): Promise<number> {
+    const result = await db.update(notifications).set({ read: true }).where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
+    return result.rowCount || 0;
+  }
+
+  async unreadCount(userId: number): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)` }).from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
+    return Number(row.count);
   }
 }
 

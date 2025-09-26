@@ -22,7 +22,7 @@ import { hashPassword, comparePassword, generateToken } from "./services/auth";
 import { authenticate, requireAdmin } from "./middleware/auth";
 import { errorHandler, notFound, createError } from "./middleware/errorHandler";
 import crypto from 'crypto';
-import { insertUserSchema, insertEventSchema, insertBookingSchema, loginSchema, registerSchema } from "@shared/schema";
+import { insertUserSchema, insertEventSchema, insertBookingSchema, loginSchema, registerSchema, profileUpdateSchema, insertNotificationSchema } from "@shared/schema";
 import { broadcast, WS_EVENTS } from "./websocket";
 import rateLimit from 'express-rate-limit';
 import { recordAudit } from './services/audit';
@@ -145,6 +145,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       next(error);
     }
+  });
+
+  // Admin: delete user (cannot delete self, cannot delete last admin if target is admin)
+  app.delete('/api/admin/users/:id', authenticate, requireAdmin, async (req, res, next) => {
+    try {
+      const targetId = parseInt(req.params.id);
+      if (targetId === req.user!.id) throw createError('You cannot delete your own account', 400);
+      const target = await storage.getUser(targetId);
+      if (!target) throw createError('User not found', 404);
+      if (target.isAdmin) {
+        const { users: all } = await storage.paginateUsers({ page:1, limit:1000, sortField:'id', direction:'asc' });
+        const adminCount = all.filter(u=>u.isAdmin).length;
+        if (adminCount <= 1) throw createError('Cannot delete the last remaining admin', 400);
+      }
+      const ok = await storage.deleteUser(targetId);
+      if (!ok) throw createError('Failed to delete user', 500);
+      recordAudit(req.user!.id, 'DELETE_USER', 'user', targetId, { email: target.email });
+      res.json({ success:true, message:'User deleted' });
+    } catch (error) { next(error); }
+  });
+
+  // Profile routes
+  app.get('/api/profile', authenticate, async (req, res, next) => {
+    try {
+      const user = await storage.getUser(req.user!.id);
+      if (!user) throw createError('User not found', 404);
+      let prefs: any = undefined;
+      try { if (user.preferences) prefs = JSON.parse(user.preferences as any); } catch {}
+      res.json({ success: true, data: { id:user.id, email:user.email, name:user.name, bio:user.bio, avatarUrl:user.avatarUrl, preferences:prefs, isAdmin:user.isAdmin } });
+    } catch (error) { next(error); }
+  });
+
+  app.put('/api/profile', authenticate, async (req, res, next) => {
+    try {
+      const data = profileUpdateSchema.parse(req.body);
+      const updated = await storage.updateUserProfile(req.user!.id, {
+        ...data,
+        preferences: data.preferences ? data.preferences : undefined,
+      } as any);
+      if (!updated) throw createError('User not found', 404);
+      recordAudit(req.user!.id, 'UPDATE_PROFILE', 'user', req.user!.id, { fields: Object.keys(data) });
+      let prefs: any = undefined; try { if (updated.preferences) prefs = JSON.parse(updated.preferences as any); } catch {}
+      res.json({ success:true, data: { id:updated.id, email:updated.email, name:updated.name, bio:updated.bio, avatarUrl:updated.avatarUrl, preferences:prefs, isAdmin:updated.isAdmin } });
+    } catch (error) { next(error); }
+  });
+
+  // Notifications
+  app.post('/api/admin/notifications', authenticate, requireAdmin, async (req,res,next) => {
+    try {
+      const payload = insertNotificationSchema.parse(req.body); // single user notification
+      const notif = await storage.createNotification(payload);
+      recordAudit(req.user!.id, 'CREATE_NOTIFICATION', 'notification', notif.id, { userId: notif.userId, type: notif.type });
+      // Broadcast unread count to that user only could be done via targeted WS (simplified broadcast)
+      res.status(201).json({ success:true, data: notif });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/notifications', authenticate, async (req,res,next) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+      const { notifications, total } = await storage.listNotifications(req.user!.id, page, limit);
+      res.json({ success:true, data: { notifications, total, page, pages: Math.ceil(total/limit) } });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/notifications/:id/read', authenticate, async (req,res,next) => {
+    try {
+      const id = parseInt(req.params.id);
+      const ok = await storage.markNotificationRead(req.user!.id, id);
+      if (!ok) throw createError('Notification not found', 404);
+      res.json({ success:true });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/notifications/read-all', authenticate, async (req,res,next) => {
+    try {
+      const count = await storage.markAllNotificationsRead(req.user!.id);
+      res.json({ success:true, data:{ updated: count } });
+    } catch (error) { next(error); }
+  });
+
+  // Audit logs listing (admin)
+  app.get('/api/admin/audit-logs', authenticate, requireAdmin, async (req,res,next) => {
+    try {
+      // Simple direct query to db via storage.db not exposed; implement lightweight query here
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+      const offset = (page-1)*limit;
+      const action = (req.query.action as string)?.trim();
+      const actorId = req.query.actorId ? parseInt(req.query.actorId as string) : undefined;
+      const targetType = (req.query.targetType as string)?.trim();
+      const start = req.query.start ? new Date(req.query.start as string) : undefined;
+      const end = req.query.end ? new Date(req.query.end as string) : undefined;
+      // Dynamic where building using sql
+      const filters: any[] = [];
+      const { db } = await import('./db');
+      const { auditLogs } = await import('@shared/schema');
+      const { and, sql, eq, gte, lte } = await import('drizzle-orm');
+      if (action) filters.push(eq(auditLogs.action, action));
+      if (actorId) filters.push(eq(auditLogs.actorId, actorId));
+      if (targetType) filters.push(eq(auditLogs.targetType, targetType));
+      if (start) filters.push(sql`${auditLogs.createdAt} >= ${start}`);
+      if (end) filters.push(sql`${auditLogs.createdAt} <= ${end}`);
+      const where = filters.length ? and(...filters) : sql`1=1`;
+      const rows = await db.select().from(auditLogs).where(where).orderBy(sql`${auditLogs.createdAt} DESC`).limit(limit).offset(offset);
+      const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(auditLogs).where(where);
+      res.json({ success:true, data:{ logs: rows, total: Number(countRow.count), page, pages: Math.ceil(Number(countRow.count)/limit) } });
+    } catch (error) { next(error); }
   });
 
   app.post("/api/auth/login", async (req, res, next) => {
@@ -357,7 +466,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         date: dateValue,
         createdBy: req.user!.id,
       });
-      const event = await storage.createEvent(eventData);
+  const event = await storage.createEvent(eventData);
+  recordAudit(req.user!.id, 'CREATE_EVENT', 'event', event.id, { title: event.title });
 
       // Initialize cache
       await setEventSlots(event.id, event.availableSlots);
@@ -413,6 +523,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Invalidate admin stats
       await invalidateAdminStats();
 
+      recordAudit(req.user!.id, 'UPDATE_EVENT', 'event', event.id, { fields: Object.keys(eventData) });
       res.json({
         success: true,
         data: event,
@@ -456,7 +567,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         payload: { eventId, fields: Object.keys(validated) }
       });
 
-      res.json({ success: true, data: updated });
+  recordAudit(req.user!.id, 'PATCH_EVENT', 'event', updated.id, { fields: Object.keys(validated) });
+  res.json({ success: true, data: updated });
     } catch (error) {
       next(error);
     }
@@ -477,6 +589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await invalidateEventLists();
       await invalidateAdminStats();
 
+      recordAudit(req.user!.id, 'DELETE_EVENT', 'event', eventId, {});
       res.json({
         success: true,
         message: "Event deleted successfully",
@@ -558,6 +671,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           },
         });
 
+        recordAudit(req.user!.id, 'BOOK_EVENT', 'event', eventId, {});
         res.status(201).json({
           success: true,
           data: booking,
@@ -617,6 +731,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             },
           });
     
+          recordAudit(req.user!.id, 'CANCEL_BOOKING', 'event', eventId, {});
           res.json({
             success: true,
             message: "Booking cancelled successfully",
