@@ -283,14 +283,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             email: 'test@example.com',
             name: 'Test User',
             isAdmin: true,
-          };
-          
-          const token = generateToken({
-            ...mockUser,
+            // extra fields for typing completeness
             password: '',
             createdAt: new Date(),
             lastLogin: new Date(),
-          });
+            bio: null as string | null,
+            avatarUrl: null as string | null,
+            preferences: null as string | null,
+          };
+
+          const token = generateToken(mockUser as any);
           
           return res.json({
             success: true,
@@ -404,7 +406,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!cachedEventList) await setEventList(page, limit, search, finalResult);
 
       const etagBase = finalResult.events
-        .map(e => `${e.id}:${new Date(e.updatedAt).getTime()}:${e.availableSlots}`)
+        .map((e: any) => `${e.id}:${new Date(e.updatedAt).getTime()}:${e.availableSlots}`)
         .join('|') + `|total:${finalResult.total}`;
       const etag = 'W/"' + crypto.createHash('sha1').update(etagBase).digest('hex') + '"';
       const ifNoneMatch = req.headers['if-none-match'];

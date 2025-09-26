@@ -37,7 +37,7 @@ export function NotificationBell() {
         {!isLoading && notifications.length === 0 && (
           <div className="p-3 text-sm text-slate-500">No notifications</div>
         )}
-        {notifications.map(n => (
+  {notifications.map((n: any) => (
           <DropdownMenuItem key={n.id} className="flex items-start gap-2 py-2 focus:bg-slate-100 cursor-default">
             <div className="mt-0.5">
               {n.read ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <span className="h-2 w-2 rounded-full bg-blue-500 block" />}
@@ -48,7 +48,7 @@ export function NotificationBell() {
               <div className="text-[10px] text-slate-400 mt-1">{new Date(n.createdAt).toLocaleString()}</div>
             </div>
             {!n.read && (
-              <Button size="xs" variant="ghost" onClick={() => markRead(n.id)} className="text-xs">Mark</Button>
+              <Button size="sm" variant="ghost" onClick={() => markRead(n.id)} className="h-6 px-2 text-[10px]">Mark</Button>
             )}
           </DropdownMenuItem>
         ))}

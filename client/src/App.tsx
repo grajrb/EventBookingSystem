@@ -11,6 +11,7 @@ import Login from "./pages/login";
 import Dashboard from "./pages/dashboard";
 import Admin from "./pages/admin";
 import Profile from './pages/profile';
+import AuditLogs from './pages/audit-logs';
 import NotFound from "@/pages/not-found";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -68,6 +69,14 @@ function Router() {
           <AdminRoute>
             <Navbar />
             <Admin />
+          </AdminRoute>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin/audit-logs">
+        <ProtectedRoute>
+          <AdminRoute>
+            <Navbar />
+            <AuditLogs />
           </AdminRoute>
         </ProtectedRoute>
       </Route>

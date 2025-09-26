@@ -97,7 +97,7 @@ export default function EventCard({ event: initialEvent }: EventCardProps) {
       <div className="w-full h-48 bg-slate-200 flex items-center justify-center">
         {event.image ? (
           <img
-            src={event.image}
+            src={/^https?:\/\//.test(event.image) ? `/api/image-proxy?url=${encodeURIComponent(event.image)}` : event.image}
             alt={event.title}
             className="w-full h-full object-cover"
           />

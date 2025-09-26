@@ -60,11 +60,11 @@ export function useNotifications() {
     mutationFn: () => notificationsAPI.markAll(),
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['notifications'] });
-      const pages = queryClient.getQueriesData({ queryKey: ['notifications'] });
-      pages.forEach(([key, data]) => {
-        if (data) {
+      const pagesData = queryClient.getQueriesData<any>({ queryKey: ['notifications'] });
+      pagesData.forEach(([key, data]) => {
+        if (data && Array.isArray(data.notifications)) {
           const updated = { ...data, notifications: data.notifications.map((n: any) => ({ ...n, read: true })) };
-          queryClient.setQueryData(key as any, updated);
+            queryClient.setQueryData(key, updated);
         }
       });
       setUnread(0);

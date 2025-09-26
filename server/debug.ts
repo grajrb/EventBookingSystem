@@ -14,7 +14,8 @@ app.get("/db-test", async (req, res) => {
     const result = await db.select().from(users).limit(1);
     res.json({ status: "db ok", count: result.length });
   } catch (error) {
-    res.status(500).json({ status: "db error", error: error.message });
+    const message = error instanceof Error ? error.message : 'unknown error';
+    res.status(500).json({ status: "db error", error: message });
   }
 });
 

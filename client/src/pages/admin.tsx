@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Calendar, Users, TrendingUp, Percent, Plus, Edit, Trash2, UserCheck, Search, Download } from "lucide-react";
+import { Calendar, Users, TrendingUp, Percent, Plus, Edit, Trash2, UserCheck, Search, Download, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -107,6 +107,12 @@ export default function Admin() {
     onError: (error: Error) => {
       toast({ title: 'Demotion Failed', description: error.message, variant: 'destructive' });
     },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: (id: number) => adminAPI.deleteUser(id),
+    onSuccess: () => { toast({ title: 'User Deleted' }); refetchUsers(); },
+    onError: (e: any) => { toast({ title:'Delete Failed', description:e.message, variant:'destructive' }); }
   });
 
   const stats = statsData?.data;
@@ -400,6 +406,25 @@ export default function Admin() {
                                 {demoteMutation.isPending ? 'Demoting...' : 'Demote'}
                               </Button>
                             )}
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700">
+                                  <UserX className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete User</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Delete user "{u.email}"? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => deleteUserMutation.mutate(u.id)} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </TableCell>
                         </TableRow>
                       ))}
