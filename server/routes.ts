@@ -23,6 +23,9 @@ import { authenticate, requireAdmin } from "./middleware/auth";
 import { errorHandler, notFound, createError } from "./middleware/errorHandler";
 import crypto from 'crypto';
 import { insertUserSchema, insertEventSchema, insertBookingSchema, loginSchema, registerSchema, profileUpdateSchema, insertNotificationSchema } from "@shared/schema";
+import { imageProxyHandler } from './imageProxy';
+import { publishWebSocketMessage } from './services/redis';
+import { broadcastToUser } from './websocket';
 import { broadcast, WS_EVENTS } from "./websocket";
 import rateLimit from 'express-rate-limit';
 import { recordAudit } from './services/audit';
@@ -198,7 +201,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const notif = await storage.createNotification(payload);
       recordAudit(req.user!.id, 'CREATE_NOTIFICATION', 'notification', notif.id, { userId: notif.userId, type: notif.type });
       // Broadcast unread count to that user only could be done via targeted WS (simplified broadcast)
-      res.status(201).json({ success:true, data: notif });
+      const unread = await storage.unreadCount(notif.userId);
+      publishWebSocketMessage({ type: WS_EVENTS as any, payload: {} }); // placeholder to keep pattern
+  broadcastToUser(notif.userId, { type: 'NOTIFICATION_COUNT', payload: { unread } });
+      res.status(201).json({ success:true, data: notif, meta: { unread } });
     } catch (error) { next(error); }
   });
 
@@ -216,16 +222,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const ok = await storage.markNotificationRead(req.user!.id, id);
       if (!ok) throw createError('Notification not found', 404);
-      res.json({ success:true });
+      const unread = await storage.unreadCount(req.user!.id);
+  broadcastToUser(req.user!.id, { type: 'NOTIFICATION_COUNT', payload: { unread } });
+      res.json({ success:true, data:{ unread } });
     } catch (error) { next(error); }
   });
 
   app.post('/api/notifications/read-all', authenticate, async (req,res,next) => {
     try {
       const count = await storage.markAllNotificationsRead(req.user!.id);
-      res.json({ success:true, data:{ updated: count } });
+      const unread = await storage.unreadCount(req.user!.id);
+  broadcastToUser(req.user!.id, { type: 'NOTIFICATION_COUNT', payload: { unread } });
+      res.json({ success:true, data:{ updated: count, unread } });
     } catch (error) { next(error); }
   });
+
+  // Image proxy endpoint
+  app.get('/api/image-proxy', imageProxyHandler);
 
   // Audit logs listing (admin)
   app.get('/api/admin/audit-logs', authenticate, requireAdmin, async (req,res,next) => {

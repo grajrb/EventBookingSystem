@@ -45,6 +45,13 @@ export const useWebSocket = () => {
           reconnectTimeoutRef.current = null;
         }
         console.log('WebSocket connected');
+        // Authenticate connection (optional for user-targeted messages)
+        try {
+          const token = localStorage.getItem('token');
+            if (token) {
+              socket.send(JSON.stringify({ type: 'AUTH', payload: { token } }));
+            }
+        } catch {}
       };
       socket.onmessage = (event) => {
         try { setLastMessage(JSON.parse(event.data) as WebSocketMessage); } catch (e) { console.error('WS parse error', e); }

@@ -35,10 +35,13 @@ export const connectRedis = async () => {
     // Subscribe to websocket broadcast channel
     await subClient.subscribe('ws:broadcast', (message: string) => {
       try {
-        // Lazy import to avoid circular requiring websocket before init
-        const { broadcast } = require('../websocket');
+        const { broadcast, broadcastToUser } = require('../websocket');
         const parsed = JSON.parse(message);
-        broadcast(parsed, { localOnly: true });
+        if (parsed?.type === '__USER_TARGET__' && parsed.payload?.userId) {
+          broadcastToUser(parsed.payload.userId, parsed.payload.message, { localOnly: true });
+        } else {
+          broadcast(parsed, { localOnly: true });
+        }
       } catch (e) {
         console.error('Failed to handle pub/sub ws message', e);
       }

@@ -1,8 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import fetch from 'node-fetch';
 import { createError } from './middleware/errorHandler';
-import { getEventData } from './services/redis';
-import { connectRedis } from './services/redis';
 import crypto from 'crypto';
 
 // We'll use Redis via existing connection utilities (reuse global clients in services/redis)
@@ -44,7 +41,8 @@ export async function imageProxyHandler(req: Request, res: Response, next: NextF
         return res.end(Buffer.from(meta.data, 'base64'));
       }
     }
-  const response = await fetch(src, { redirect: 'follow' });
+    // Use global fetch (Node 18+). No need for node-fetch dependency.
+    const response = await fetch(src, { redirect: 'follow' });
     if (!response.ok) throw createError('Upstream fetch failed', 502);
     const contentType = response.headers.get('content-type')?.split(';')[0].trim() || '';
     if (!ALLOWED_CONTENT_TYPES.has(contentType)) throw createError('Unsupported content type', 415);

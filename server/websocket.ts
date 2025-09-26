@@ -1,6 +1,7 @@
 import { Server } from 'http';
 import WebSocket, { WebSocketServer } from 'ws';
 import { publishWebSocketMessage } from './services/redis';
+import jwt from 'jsonwebtoken';
 
 // Centralized WebSocket event types
 export const WS_EVENTS = {
@@ -15,8 +16,10 @@ interface WebSocketMessage {
   payload: any;
 }
 
-// Store clients with their connection status
-const clients = new Map<WebSocket, { isAlive: boolean }>();
+interface AuthedClientMeta { isAlive: boolean; userId?: number }
+
+// Store clients with their connection status and optional userId once authenticated
+const clients = new Map<WebSocket, AuthedClientMeta>();
 
 export function setupWebSocketServer(server: Server) {
   // Use dedicated path for application WebSocket (avoid clashing with Vite HMR)
@@ -36,6 +39,17 @@ export function setupWebSocketServer(server: Server) {
     ws.on('message', (message) => {
       try {
         const data = JSON.parse(message.toString()) as WebSocketMessage;
+        if (data.type === 'AUTH' && data.payload?.token) {
+          try {
+            const decoded: any = jwt.verify(data.payload.token, process.env.JWT_SECRET || 'secret');
+            const meta = clients.get(ws);
+            if (meta) meta.userId = decoded.id;
+            ws.send(JSON.stringify({ type: 'AUTH_OK', payload: { userId: decoded.id }}));
+          } catch (e) {
+            ws.send(JSON.stringify({ type: 'AUTH_ERROR', payload: { message: 'Invalid token' }}));
+          }
+          return;
+        }
         console.log('WebSocket message received:', data.type);
       } catch (error) {
         console.error('Failed to parse WebSocket message:', error);
@@ -96,5 +110,22 @@ export function broadcast(message: WebSocketMessage, { localOnly = false }: { lo
 export function sendTo(ws: WebSocket, message: WebSocketMessage) {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(message));
+  }
+}
+
+export function sendToUser(userId: number, message: WebSocketMessage) {
+  const str = JSON.stringify(message);
+  Array.from(clients.entries()).forEach(([ws, meta]) => {
+    if (meta.userId === userId && meta.isAlive && ws.readyState === WebSocket.OPEN) {
+      ws.send(str);
+    }
+  });
+}
+
+export function broadcastToUser(userId: number, message: WebSocketMessage, { localOnly = false }: { localOnly?: boolean } = {}) {
+  sendToUser(userId, message);
+  if (!localOnly) {
+    // Wrap user targeting so other instances can route; include a special envelope
+    publishWebSocketMessage({ type: '__USER_TARGET__', payload: { userId, message } }).catch(()=>{});
   }
 }

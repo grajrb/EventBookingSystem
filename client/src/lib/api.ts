@@ -115,5 +115,46 @@ export const adminAPI = {
   demoteUser: async (id: number): Promise<ApiResponse<any>> => {
     const response = await apiRequest('POST', `/api/admin/users/${id}/demote`);
     return response.json();
+  },
+  deleteUser: async (id: number): Promise<ApiResponse<any>> => {
+    const response = await apiRequest('DELETE', `/api/admin/users/${id}`);
+    return response.json();
+  },
+  createNotification: async (payload: { userId: number; title: string; body?: string; type?: string }): Promise<ApiResponse<any>> => {
+    const response = await apiRequest('POST', '/api/admin/notifications', payload);
+    return response.json();
+  },
+  getAuditLogs: async (params: { page?: number; limit?: number; action?: string; actorId?: number; targetType?: string; start?: string; end?: string }): Promise<ApiResponse<any>> => {
+    const query = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k,v]) => { if (v!==undefined && v!==null && v!=='') query.set(k,String(v)); });
+    const response = await apiRequest('GET', `/api/admin/audit-logs?${query.toString()}`);
+    return response.json();
+  }
+};
+
+// Notifications / Profile API
+export const notificationsAPI = {
+  list: async (page=1, limit=20): Promise<ApiResponse<any>> => {
+    const response = await apiRequest('GET', `/api/notifications?page=${page}&limit=${limit}`);
+    return response.json();
+  },
+  markRead: async (id: number): Promise<ApiResponse<any>> => {
+    const response = await apiRequest('POST', `/api/notifications/${id}/read`);
+    return response.json();
+  },
+  markAll: async (): Promise<ApiResponse<any>> => {
+    const response = await apiRequest('POST', `/api/notifications/read-all`);
+    return response.json();
+  }
+};
+
+export const profileAPI = {
+  get: async (): Promise<ApiResponse<any>> => {
+    const response = await apiRequest('GET', '/api/profile');
+    return response.json();
+  },
+  update: async (data: { name?: string; bio?: string; avatarUrl?: string; preferences?: any }): Promise<ApiResponse<any>> => {
+    const response = await apiRequest('PUT', '/api/profile', data);
+    return response.json();
   }
 };

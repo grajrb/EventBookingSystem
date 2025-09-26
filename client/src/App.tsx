@@ -10,6 +10,7 @@ import Home from "./pages/home";
 import Login from "./pages/login";
 import Dashboard from "./pages/dashboard";
 import Admin from "./pages/admin";
+import Profile from './pages/profile';
 import NotFound from "@/pages/not-found";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -54,6 +55,12 @@ function Router() {
         <ProtectedRoute>
           <Navbar />
           <Dashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/profile">
+        <ProtectedRoute>
+          <Navbar />
+          <Profile />
         </ProtectedRoute>
       </Route>
       <Route path="/admin">
