@@ -528,7 +528,13 @@ export default function Admin() {
                                 size="sm"
                                 onClick={() => {
                                   setSelectedEvent(event);
-                                  setSelectedEventAttendees(attendeesData?.data || []);
+                                  const mapped = (attendeesData?.data || []).filter(a => a.user && a.user.name && a.user.email).map(a => ({
+                                    id: a.id,
+                                    user: { name: a.user!.name, email: a.user!.email },
+                                    status: a.status,
+                                    createdAt: a.createdAt,
+                                  }));
+                                  setSelectedEventAttendees(mapped as BookingWithDetails[]);
                                   setIsAttendeeListOpen(true);
                                   handleViewAttendees(event);
                                 }}

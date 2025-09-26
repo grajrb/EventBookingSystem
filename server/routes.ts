@@ -21,6 +21,7 @@ import {
 import { hashPassword, comparePassword, generateToken } from "./services/auth";
 import { authenticate, requireAdmin } from "./middleware/auth";
 import { errorHandler, notFound, createError } from "./middleware/errorHandler";
+import crypto from 'crypto';
 import { insertUserSchema, insertEventSchema, insertBookingSchema, loginSchema, registerSchema } from "@shared/schema";
 import { broadcast, WS_EVENTS } from "./websocket";
 import rateLimit from 'express-rate-limit';
@@ -269,33 +270,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user?.id;
 
       const result = await storage.getEvents(page, limit, search, userId);
-
-      // Check cache for event list
       const cachedEventList = await getEventList(page, limit, search);
-      if (cachedEventList) {
-        return res.json({
-          success: true,
-          data: cachedEventList,
-        });
-      }
+      const finalResult = cachedEventList || result;
 
-      // Update cache for each event
-      for (const event of result.events) {
+      // Update slot counts from per-event cache
+      for (const event of finalResult.events) {
         const cachedSlots = await getEventSlots(event.id);
-        if (cachedSlots === null) {
-          await setEventSlots(event.id, event.availableSlots);
-        } else {
-          event.availableSlots = cachedSlots;
-        }
+        if (cachedSlots === null) await setEventSlots(event.id, event.availableSlots); else event.availableSlots = cachedSlots;
       }
 
-      // Cache the event list
-      await setEventList(page, limit, search, result);
+      if (!cachedEventList) await setEventList(page, limit, search, finalResult);
 
-      res.json({
-        success: true,
-        data: result,
-      });
+      const etagBase = finalResult.events
+        .map(e => `${e.id}:${new Date(e.updatedAt).getTime()}:${e.availableSlots}`)
+        .join('|') + `|total:${finalResult.total}`;
+      const etag = 'W/"' + crypto.createHash('sha1').update(etagBase).digest('hex') + '"';
+      const ifNoneMatch = req.headers['if-none-match'];
+      if (ifNoneMatch && ifNoneMatch === etag) {
+        res.status(304).setHeader('ETag', etag).end();
+        return;
+      }
+      res.setHeader('ETag', etag);
+      res.json({ success: true, data: finalResult });
     } catch (error) {
       next(error);
     }
@@ -385,7 +381,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/events/:id", authenticate, requireAdmin, async (req, res, next) => {
     try {
       const eventId = parseInt(req.params.id);
-      const eventData = insertEventSchema.partial().parse(req.body);
+      let payload: any = { ...req.body };
+      if (payload.date) {
+        let d = payload.date;
+        if (typeof d === 'string') d = new Date(d);
+        if (!(d instanceof Date) || isNaN(d.getTime())) {
+          throw createError('Invalid date format', 400);
+        }
+        payload.date = d;
+      }
+      const eventData = insertEventSchema.partial().parse(payload);
 
       const event = await storage.updateEvent(eventId, eventData);
       if (!event) {

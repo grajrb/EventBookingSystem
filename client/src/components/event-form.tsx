@@ -17,6 +17,7 @@ import { eventsAPI } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Event } from "../types";
 
+const imageUrlRegex = /^https?:\/\/[\w.-]+(?:\/[\w%./?=&#-]*)?$/i;
 const eventSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
   description: z.string().min(10, "Description must be at least 10 characters"),
@@ -24,7 +25,17 @@ const eventSchema = z.object({
   date: z.string().min(1, "Date and time is required"),
   totalSlots: z.number().min(1, "Must have at least 1 slot"),
   tags: z.string(),
-  image: z.string().url("Must be a valid URL").optional().or(z.literal('').transform(() => undefined)),
+  image: z
+    .string()
+    .optional()
+    .or(z.literal('').transform(() => undefined))
+    .refine((val) => {
+      if (!val) return true;
+      if (val.length > 500) return false;
+      // Accept general http(s) and common Google image redirect patterns
+      if (imageUrlRegex.test(val)) return true;
+      return false;
+    }, 'Must be a valid image URL (http/https)')
 });
 
 type EventFormData = z.infer<typeof eventSchema>;
@@ -116,21 +127,35 @@ export default function EventForm({ isOpen, onClose, event }: EventFormProps) {
 
   const updateMutation = useMutation({
     mutationFn: (data: any) => eventsAPI.updateEvent(event!.id, data),
-    onSuccess: () => {
-      toast({
-        title: "Event Updated",
-        description: "Event has been updated successfully",
+    onMutate: async (data: any) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/events"] });
+      const prev = queryClient.getQueryData<any>(["/api/events", 1, ""]);
+      // Optimistically update cache (naive: search first page key variant)
+      queryClient.setQueryData<any>(["/api/events", 1, ""], (old: any) => {
+        if (!old || !old.data) return old;
+        return {
+          ...old,
+          data: {
+            ...old.data,
+            events: old.data.events.map((e: Event) => e.id === event!.id ? { ...e, ...data, updatedAt: new Date().toISOString() } : e)
+          }
+        };
       });
+      return { prev };
+    },
+    onError: (err, _variables, context) => {
+      if (context?.prev) {
+        queryClient.setQueryData(["/api/events", 1, ""], context.prev);
+      }
+      toast({ title: 'Update Failed', description: (err as Error).message, variant: 'destructive' });
+    },
+    onSuccess: () => {
+      toast({ title: 'Event Updated', description: 'Event has been updated successfully' });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       onClose();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
+    }
   });
 
   const onSubmit = (data: EventFormData) => {
