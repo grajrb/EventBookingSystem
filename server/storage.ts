@@ -8,6 +8,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   listUsers(): Promise<User[]>;
+  paginateUsers(opts: { page: number; limit: number; search?: string; sortField: string; direction: 'asc' | 'desc'; }): Promise<{ users: User[]; total: number }>;
 
   // Event operations
   getEvents(page: number, limit: number, search?: string, userId?: number): Promise<{ events: EventWithBookings[], total: number }>;
@@ -75,6 +76,17 @@ export class DatabaseStorage implements IStorage {
       console.error('Database error in listUsers:', error);
       throw new Error('Failed to list users');
     }
+  }
+
+  async paginateUsers({ page, limit, search, sortField, direction }: { page: number; limit: number; search?: string; sortField: string; direction: 'asc' | 'desc'; }): Promise<{ users: User[]; total: number }> {
+    const offset = (page - 1) * limit;
+    const order = direction === 'asc' ? sql`ASC` : sql`DESC`;
+    const columnMap: Record<string, any> = { createdAt: users.createdAt, email: users.email, name: users.name, lastLogin: (users as any).lastLogin, isAdmin: users.isAdmin };
+    const col = columnMap[sortField] || users.createdAt;
+    const where = search ? or(like(users.email, `%${search}%`), like(users.name, `%${search}%`)) : sql`1=1`;
+    const rows = await db.select().from(users).where(where).orderBy(sql`${col} ${order}`).limit(limit).offset(offset);
+    const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(users).where(where);
+    return { users: rows, total: Number(countRow.count) };
   }
 
   async getEvents(page: number, limit: number, search?: string, userId?: number): Promise<{ events: EventWithBookings[], total: number }> {

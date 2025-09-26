@@ -3,6 +3,8 @@ export interface User {
   email: string;
   name: string;
   isAdmin: boolean;
+  createdAt?: string;
+  lastLogin?: string | null;
 }
 
 export interface Event {
@@ -56,4 +58,11 @@ export interface AdminStats {
   totalBookings: number;
   thisMonth: number;
   occupancyRate: number;
+}
+
+export interface AdminUsersListResponse {
+  users: User[];
+  total: number;
+  page: number;
+  pages: number;
 }

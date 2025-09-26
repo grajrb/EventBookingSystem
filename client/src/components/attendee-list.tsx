@@ -16,7 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 
-interface BookingWithDetails {
+export interface BookingWithDetails {
   id: string | number;
   user: {
     name: string;

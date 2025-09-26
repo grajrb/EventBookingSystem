@@ -6,7 +6,8 @@ import type {
   AuthResponse, 
   ApiResponse, 
   PaginatedResponse,
-  AdminStats 
+  AdminStats,
+  AdminUsersListResponse
 } from "../types";
 
 // Auth API
@@ -94,12 +95,25 @@ export const adminAPI = {
     const response = await apiRequest("GET", "/api/admin/stats");
     return response.json();
   },
-  getUsers: async (): Promise<ApiResponse<User[]>> => {
-    const response = await apiRequest('GET', '/api/admin/users');
+  getUsers: async (params?: { page?: number; limit?: number; search?: string; sort?: string; direction?: 'asc' | 'desc' }): Promise<ApiResponse<AdminUsersListResponse>> => {
+    const query = new URLSearchParams();
+    if (params) {
+      if (params.page) query.set('page', String(params.page));
+      if (params.limit) query.set('limit', String(params.limit));
+      if (params.search) query.set('search', params.search);
+      if (params.sort) query.set('sort', params.sort);
+      if (params.direction) query.set('direction', params.direction);
+    }
+    const qs = query.toString();
+    const response = await apiRequest(`GET`, `/api/admin/users${qs ? `?${qs}` : ''}`);
     return response.json();
   },
   promoteUser: async (id: number): Promise<ApiResponse<any>> => {
     const response = await apiRequest('POST', `/api/admin/users/${id}/promote`);
+    return response.json();
+  },
+  demoteUser: async (id: number): Promise<ApiResponse<any>> => {
+    const response = await apiRequest('POST', `/api/admin/users/${id}/demote`);
     return response.json();
   }
 };

@@ -30,6 +30,7 @@ import AttendeeList from "../components/attendee-list";
 import { eventsAPI, adminAPI } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Event, User } from "../types";
+import type { BookingWithDetails } from "../components/attendee-list";
 
 export default function Admin() {
   const { toast } = useToast();
@@ -46,9 +47,14 @@ export default function Admin() {
     queryFn: adminAPI.getStats,
   });
 
+  const [userPage, setUserPage] = useState(1);
+  const [userSearch, setUserSearch] = useState('');
+  const [userSort, setUserSort] = useState<'createdAt' | 'email' | 'name' | 'lastLogin' | 'isAdmin'>('createdAt');
+  const [userDirection, setUserDirection] = useState<'asc' | 'desc'>('desc');
+  const usersQueryKey = ['/api/admin/users', userPage, userSearch, userSort, userDirection];
   const { data: usersData, isLoading: usersLoading, refetch: refetchUsers } = useQuery({
-    queryKey: ['/api/admin/users'],
-    queryFn: adminAPI.getUsers,
+    queryKey: usersQueryKey,
+    queryFn: () => adminAPI.getUsers({ page: userPage, limit: 10, search: userSearch || undefined, sort: userSort, direction: userDirection }),
   });
 
   const { data: eventsData, isLoading: eventsLoading } = useQuery({
@@ -83,12 +89,23 @@ export default function Admin() {
 
   const promoteMutation = useMutation({
     mutationFn: (id: number) => adminAPI.promoteUser(id),
-    onSuccess: (_data, id) => {
+    onSuccess: () => {
       toast({ title: 'User Promoted', description: 'User has been granted admin privileges.' });
       refetchUsers();
     },
     onError: (error: Error) => {
       toast({ title: 'Promotion Failed', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const demoteMutation = useMutation({
+    mutationFn: (id: number) => adminAPI.demoteUser(id),
+    onSuccess: () => {
+      toast({ title: 'User Demoted', description: 'Admin privileges removed.' });
+      refetchUsers();
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Demotion Failed', description: error.message, variant: 'destructive' });
     },
   });
 
@@ -213,7 +230,18 @@ export default function Admin() {
     );
   }
 
-  const users = usersData?.data || [] as User[];
+  const usersPayload = usersData?.data;
+  const users = usersPayload?.users || [] as User[];
+  const totalPages = usersPayload?.pages || 1;
+
+  const toggleSort = (field: typeof userSort) => {
+    if (userSort === field) {
+      setUserDirection(userDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setUserSort(field);
+      setUserDirection('asc');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -322,38 +350,69 @@ export default function Admin() {
             ) : users.length === 0 ? (
               <div className="py-8 text-center text-slate-500">No users found.</div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>User</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users.map(u => (
-                      <TableRow key={u.id} className="hover:bg-slate-50">
-                        <TableCell className="font-medium text-slate-900">{u.name}</TableCell>
-                        <TableCell className="text-slate-600">{u.email}</TableCell>
-                        <TableCell>{u.isAdmin ? <Badge>Admin</Badge> : <Badge variant="secondary">User</Badge>}</TableCell>
-                        <TableCell>
-                          {!u.isAdmin && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={promoteMutation.isPending}
-                              onClick={() => promoteMutation.mutate(u.id)}
-                            >
-                              {promoteMutation.isPending ? 'Promoting...' : 'Promote'}
-                            </Button>
-                          )}
-                        </TableCell>
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Input
+                    placeholder="Search users..."
+                    value={userSearch}
+                    onChange={e => { setUserSearch(e.target.value); setUserPage(1); }}
+                    className="max-w-xs"
+                  />
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="cursor-pointer" onClick={() => toggleSort('name')}>User {userSort==='name' ? (userDirection==='asc'?'▲':'▼') : ''}</TableHead>
+                        <TableHead className="cursor-pointer" onClick={() => toggleSort('email')}>Email {userSort==='email' ? (userDirection==='asc'?'▲':'▼') : ''}</TableHead>
+                        <TableHead className="cursor-pointer" onClick={() => toggleSort('isAdmin')}>Role {userSort==='isAdmin' ? (userDirection==='asc'?'▲':'▼') : ''}</TableHead>
+                        <TableHead className="cursor-pointer" onClick={() => toggleSort('lastLogin')}>Last Login {userSort==='lastLogin' ? (userDirection==='asc'?'▲':'▼') : ''}</TableHead>
+                        <TableHead className="cursor-pointer" onClick={() => toggleSort('createdAt')}>Created {userSort==='createdAt' ? (userDirection==='asc'?'▲':'▼') : ''}</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {users.map(u => (
+                        <TableRow key={u.id} className="hover:bg-slate-50">
+                          <TableCell className="font-medium text-slate-900">{u.name}</TableCell>
+                          <TableCell className="text-slate-600">{u.email}</TableCell>
+                          <TableCell>{u.isAdmin ? <Badge>Admin</Badge> : <Badge variant="secondary">User</Badge>}</TableCell>
+                          <TableCell className="text-sm text-slate-500">{u.lastLogin ? new Date(u.lastLogin).toLocaleDateString() : '—'}</TableCell>
+                          <TableCell className="text-sm text-slate-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}</TableCell>
+                          <TableCell className="space-x-2">
+                            {!u.isAdmin && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={promoteMutation.isPending}
+                                onClick={() => promoteMutation.mutate(u.id)}
+                              >
+                                {promoteMutation.isPending ? 'Promoting...' : 'Promote'}
+                              </Button>
+                            )}
+                            {u.isAdmin && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={demoteMutation.isPending}
+                                onClick={() => demoteMutation.mutate(u.id)}
+                              >
+                                {demoteMutation.isPending ? 'Demoting...' : 'Demote'}
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-slate-600">Page {userPage} of {totalPages}</div>
+                  <div className="space-x-2">
+                    <Button size="sm" variant="outline" disabled={userPage===1} onClick={() => setUserPage(p=>p-1)}>Prev</Button>
+                    <Button size="sm" variant="outline" disabled={userPage===totalPages} onClick={() => setUserPage(p=>p+1)}>Next</Button>
+                  </div>
+                </div>
               </div>
             )}
           </CardContent>
@@ -527,7 +586,7 @@ export default function Admin() {
             setIsAttendeeListOpen(false);
             setSelectedEvent(undefined);
           }}
-          attendees={attendeesData?.data || []}
+          attendees={(attendeesData?.data as BookingWithDetails[]) || []}
           eventTitle={selectedEvent?.title || ""}
         />
       </main>

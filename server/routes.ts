@@ -24,6 +24,7 @@ import { errorHandler, notFound, createError } from "./middleware/errorHandler";
 import { insertUserSchema, insertEventSchema, insertBookingSchema, loginSchema, registerSchema } from "@shared/schema";
 import { broadcast, WS_EVENTS } from "./websocket";
 import rateLimit from 'express-rate-limit';
+import { recordAudit } from './services/audit';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Create HTTP server
@@ -95,7 +96,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ success: true, message: 'User is already an admin' });
       }
       await storage.updateUser(userId, { isAdmin: true } as any);
+      recordAudit(req.user!.id, 'PROMOTE_USER', 'user', userId, { email: user.email });
       res.json({ success: true, message: 'User promoted to admin' });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Admin: demote user (cannot demote self, must retain at least one admin)
+  app.post('/api/admin/users/:id/demote', authenticate, requireAdmin, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+      if (userId === req.user!.id) {
+        throw createError('You cannot demote yourself', 400);
+      }
+      const user = await storage.getUser(userId);
+      if (!user) throw createError('User not found', 404);
+      if (!user.isAdmin) return res.json({ success: true, message: 'User is already not an admin' });
+      // Ensure there will remain at least one admin
+      const { users: allAdmins } = await storage.paginateUsers({ page: 1, limit: 1000, search: undefined, sortField: 'id', direction: 'asc' });
+      const adminCount = allAdmins.filter(u => u.isAdmin).length;
+      if (adminCount <= 1) {
+        throw createError('Cannot demote the last remaining admin', 400);
+      }
+      await storage.updateUser(userId, { isAdmin: false } as any);
+      recordAudit(req.user!.id, 'DEMOTE_USER', 'user', userId, { email: user.email });
+      res.json({ success: true, message: 'User demoted from admin' });
     } catch (error) {
       next(error);
     }
@@ -140,6 +166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ...mockUser,
             password: '',
             createdAt: new Date(),
+            lastLogin: new Date(),
           });
           
           return res.json({
