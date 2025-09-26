@@ -10,6 +10,7 @@ export const users = pgTable("users", {
   name: varchar("name", { length: 255 }).notNull(),
   isAdmin: boolean("is_admin").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastLogin: timestamp("last_login"),
 });
 
 export const events = pgTable("events", {
@@ -33,6 +34,16 @@ export const bookings = pgTable("bookings", {
   eventId: integer("event_id").notNull().references(() => events.id),
   status: varchar("status", { length: 50 }).default("confirmed").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const auditLogs = pgTable('audit_logs', {
+  id: serial('id').primaryKey(),
+  actorId: integer('actor_id').notNull().references(() => users.id),
+  action: varchar('action', { length: 100 }).notNull(),
+  targetType: varchar('target_type', { length: 50 }).notNull(),
+  targetId: integer('target_id'),
+  metadata: text('metadata'), // JSON string
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 // Relations

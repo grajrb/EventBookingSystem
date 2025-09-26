@@ -38,7 +38,7 @@ export const connectRedis = async () => {
         // Lazy import to avoid circular requiring websocket before init
         const { broadcast } = require('../websocket');
         const parsed = JSON.parse(message);
-        broadcast(parsed);
+        broadcast(parsed, { localOnly: true });
       } catch (e) {
         console.error('Failed to handle pub/sub ws message', e);
       }

@@ -23,6 +23,7 @@ import { authenticate, requireAdmin } from "./middleware/auth";
 import { errorHandler, notFound, createError } from "./middleware/errorHandler";
 import { insertUserSchema, insertEventSchema, insertBookingSchema, loginSchema, registerSchema } from "@shared/schema";
 import { broadcast, WS_EVENTS } from "./websocket";
+import rateLimit from 'express-rate-limit';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Create HTTP server
@@ -76,7 +77,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin: promote a user to admin (must already be admin)
-  app.post('/api/admin/users/:id/promote', authenticate, requireAdmin, async (req, res, next) => {
+  const promoteLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Too many promotion attempts, try later' }
+  });
+  app.post('/api/admin/users/:id/promote', authenticate, requireAdmin, promoteLimiter, async (req, res, next) => {
     try {
       const userId = parseInt(req.params.id);
       const user = await storage.getUser(userId);
@@ -94,10 +102,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin: list users
-  app.get('/api/admin/users', authenticate, requireAdmin, async (_req, res, next) => {
+  app.get('/api/admin/users', authenticate, requireAdmin, async (req, res, next) => {
     try {
-      const users = await storage.listUsers();
-      res.json({ success: true, data: users });
+      const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 100);
+      const search = (req.query.search as string)?.trim();
+      const sort = (req.query.sort as string) || 'createdAt:desc';
+      const [sortField, sortDir] = sort.split(':');
+      const validSortFields = new Set(['createdAt','email','name','lastLogin','isAdmin']);
+      const direction = sortDir === 'asc' ? 'asc' : 'desc';
+      const field = validSortFields.has(sortField) ? sortField : 'createdAt';
+
+      const { users, total } = await storage.paginateUsers({ page, limit, search, sortField: field, direction });
+      res.json({ success: true, data: { users, total, page, pages: Math.ceil(total / limit) } });
     } catch (error) {
       next(error);
     }
@@ -149,7 +166,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Generate token
-        const token = generateToken(user);
+  const token = generateToken(user);
+
+  // Update lastLogin (best effort)
+  try { await storage.updateUser(user.id, { lastLogin: new Date() } as any); } catch {}
 
         res.json({
           success: true,
@@ -365,6 +385,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true,
         data: event,
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Partial update (PATCH) for events (admin only)
+  app.patch('/api/events/:id', authenticate, requireAdmin, async (req, res, next) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      const payload: any = { ...req.body };
+      if (payload.date) {
+        let d = payload.date;
+        if (typeof d === 'string') d = new Date(d);
+        if (!(d instanceof Date) || isNaN(d.getTime())) {
+          throw createError('Invalid date format', 400);
+        }
+        payload.date = d;
+      }
+      // Use schema partial for validation (strip unknowns)
+      const validated = insertEventSchema.partial().parse(payload);
+      const updated = await storage.updateEvent(eventId, validated);
+      if (!updated) throw createError('Event not found', 404);
+
+      // Cache invalidations similar to PUT path
+      if (validated.totalSlots !== undefined) {
+        await invalidateEventSlots(eventId);
+        await setEventSlots(eventId, updated.availableSlots);
+      }
+      await invalidateEventData(eventId);
+      await setEventData(eventId, updated);
+      await invalidateEventLists();
+      await invalidateAdminStats();
+
+      // Broadcast event update (slots or metadata)
+      broadcast({
+        type: WS_EVENTS.EVENT_UPDATED,
+        payload: { eventId, fields: Object.keys(validated) }
+      });
+
+      res.json({ success: true, data: updated });
     } catch (error) {
       next(error);
     }
