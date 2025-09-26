@@ -1,6 +1,8 @@
 import { createClient } from 'redis';
 
 let client: any = null;
+let pubClient: any = null;
+let subClient: any = null;
 let isConnected = false;
 let redisAvailable = true;
 
@@ -26,6 +28,21 @@ export const connectRedis = async () => {
     });
 
     await client.connect();
+    // Duplicate connections for pub/sub to avoid performance issues
+    pubClient = client.duplicate();
+    subClient = client.duplicate();
+    await Promise.all([pubClient.connect(), subClient.connect()]);
+    // Subscribe to websocket broadcast channel
+    await subClient.subscribe('ws:broadcast', (message: string) => {
+      try {
+        // Lazy import to avoid circular requiring websocket before init
+        const { broadcast } = require('../websocket');
+        const parsed = JSON.parse(message);
+        broadcast(parsed);
+      } catch (e) {
+        console.error('Failed to handle pub/sub ws message', e);
+      }
+    });
     isConnected = true;
     console.log('Connected to Redis');
   } catch (error) {
@@ -189,6 +206,16 @@ export const invalidateAdminStats = async (): Promise<void> => {
     await client.del('admin:stats');
   } catch (error) {
     redisAvailable = false;
+  }
+};
+
+export const publishWebSocketMessage = async (payload: any) => {
+  if (!pubClient || !isConnected || !redisAvailable) return false;
+  try {
+    await pubClient.publish('ws:broadcast', JSON.stringify(payload));
+    return true;
+  } catch (e) {
+    return false;
   }
 };
 

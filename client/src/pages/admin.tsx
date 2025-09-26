@@ -29,7 +29,7 @@ import EventForm from "../components/event-form";
 import AttendeeList from "../components/attendee-list";
 import { eventsAPI, adminAPI } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
-import type { Event } from "../types";
+import type { Event, User } from "../types";
 
 export default function Admin() {
   const { toast } = useToast();
@@ -44,6 +44,11 @@ export default function Admin() {
   const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/admin/stats"],
     queryFn: adminAPI.getStats,
+  });
+
+  const { data: usersData, isLoading: usersLoading, refetch: refetchUsers } = useQuery({
+    queryKey: ['/api/admin/users'],
+    queryFn: adminAPI.getUsers,
   });
 
   const { data: eventsData, isLoading: eventsLoading } = useQuery({
@@ -73,6 +78,17 @@ export default function Admin() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+
+  const promoteMutation = useMutation({
+    mutationFn: (id: number) => adminAPI.promoteUser(id),
+    onSuccess: (_data, id) => {
+      toast({ title: 'User Promoted', description: 'User has been granted admin privileges.' });
+      refetchUsers();
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Promotion Failed', description: error.message, variant: 'destructive' });
     },
   });
 
@@ -197,6 +213,8 @@ export default function Admin() {
     );
   }
 
+  const users = usersData?.data || [] as User[];
+
   return (
     <div className="min-h-screen bg-slate-50">
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -292,6 +310,54 @@ export default function Admin() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Users Management */}
+        <Card className="mb-8">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <CardTitle>User Management</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {usersLoading ? (
+              <div className="py-8 text-center text-slate-500">Loading users...</div>
+            ) : users.length === 0 ? (
+              <div className="py-8 text-center text-slate-500">No users found.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>User</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {users.map(u => (
+                      <TableRow key={u.id} className="hover:bg-slate-50">
+                        <TableCell className="font-medium text-slate-900">{u.name}</TableCell>
+                        <TableCell className="text-slate-600">{u.email}</TableCell>
+                        <TableCell>{u.isAdmin ? <Badge>Admin</Badge> : <Badge variant="secondary">User</Badge>}</TableCell>
+                        <TableCell>
+                          {!u.isAdmin && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={promoteMutation.isPending}
+                              onClick={() => promoteMutation.mutate(u.id)}
+                            >
+                              {promoteMutation.isPending ? 'Promoting...' : 'Promote'}
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Events Management Table */}
         <Card>

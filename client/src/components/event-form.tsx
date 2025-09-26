@@ -24,6 +24,7 @@ const eventSchema = z.object({
   date: z.string().min(1, "Date and time is required"),
   totalSlots: z.number().min(1, "Must have at least 1 slot"),
   tags: z.string(),
+  image: z.string().url("Must be a valid URL").optional().or(z.literal('').transform(() => undefined)),
 });
 
 type EventFormData = z.infer<typeof eventSchema>;
@@ -54,6 +55,7 @@ export default function EventForm({ isOpen, onClose, event }: EventFormProps) {
           date: new Date(event.date).toISOString().slice(0, 16),
           totalSlots: event.totalSlots,
           tags: event.tags ? event.tags.join(", ") : "",
+          image: event.image || ''
         }
       : {
           title: "",
@@ -62,6 +64,7 @@ export default function EventForm({ isOpen, onClose, event }: EventFormProps) {
           date: "",
           totalSlots: 1,
           tags: "",
+          image: ''
         },
   });
 
@@ -75,6 +78,7 @@ export default function EventForm({ isOpen, onClose, event }: EventFormProps) {
           date: new Date(event.date).toISOString().slice(0, 16),
           totalSlots: event.totalSlots,
           tags: event.tags ? event.tags.join(", ") : "",
+          image: event.image || ''
         });
       } else {
         reset({
@@ -84,6 +88,7 @@ export default function EventForm({ isOpen, onClose, event }: EventFormProps) {
           date: "",
           totalSlots: 1,
           tags: "",
+          image: ''
         });
       }
     }
@@ -133,6 +138,7 @@ export default function EventForm({ isOpen, onClose, event }: EventFormProps) {
       ...data,
       date: new Date(data.date).toISOString(),
       tags: data.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+      image: data.image || undefined,
     };
 
     if (isEditing && event) {
@@ -229,6 +235,19 @@ export default function EventForm({ isOpen, onClose, event }: EventFormProps) {
             {errors.tags && (
               <p className="text-sm text-red-600 mt-1">{errors.tags.message}</p>
             )}
+          </div>
+
+          <div>
+            <Label htmlFor="image">Image URL</Label>
+            <Input
+              id="image"
+              placeholder="https://example.com/image.jpg"
+              {...register("image")}
+            />
+            {errors.image && (
+              <p className="text-sm text-red-600 mt-1">{errors.image.message as string}</p>
+            )}
+            <p className="text-xs text-slate-500 mt-1">Provide a direct image URL (e.g., hosted image / CDN). Leave empty for placeholder.</p>
           </div>
 
           <div className="flex items-center justify-end space-x-4 pt-6 border-t">

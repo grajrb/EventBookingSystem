@@ -94,4 +94,12 @@ export const adminAPI = {
     const response = await apiRequest("GET", "/api/admin/stats");
     return response.json();
   },
+  getUsers: async (): Promise<ApiResponse<User[]>> => {
+    const response = await apiRequest('GET', '/api/admin/users');
+    return response.json();
+  },
+  promoteUser: async (id: number): Promise<ApiResponse<any>> => {
+    const response = await apiRequest('POST', `/api/admin/users/${id}/promote`);
+    return response.json();
+  }
 };

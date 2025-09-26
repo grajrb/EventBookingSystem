@@ -5,6 +5,8 @@
   "license": "MIT",
   "scripts": {
     "dev": "tsx server/index.ts",
+    "dev:server": "nodemon --watch server --watch shared --ext ts,tsx --signal SIGINT --exec tsx server/index.ts",
+    "dev:full": "nodemon --watch server --watch shared --watch client/src --ext ts,tsx,js,jsx --signal SIGINT --exec \"npm run dev\"",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "node dist/index.js",
     "check": "tsc",
@@ -110,6 +112,7 @@
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
     "@types/supertest": "^6.0.2",
+    "supertest": "^6.3.4",
     "@types/ws": "^8.5.10",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.18",
@@ -120,6 +123,7 @@
     "tailwindcss": "^3.4.1",
     "tsx": "^4.7.1",
     "typescript": "^5.4.2",
-    "vite": "^5.1.4"
+    "vite": "^5.1.4",
+    "nodemon": "^3.1.4"
   }
 }

@@ -3,13 +3,18 @@ import 'dotenv/config';
 
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
-import { serveStatic, log } from "./vite";
+import { serveStatic, setupVite, log } from "./vite";
 import { setupWebSocketServer } from "./websocket";
+import fs from 'fs';
+import path from 'path';
 import { errorHandler, notFound } from "./middleware/errorHandler";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Avoid noisy 404 logs for favicon
+app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
 // CORS middleware for both HTTP and WebSocket
 app.use((req, res, next) => {
@@ -58,12 +63,45 @@ app.use((req, res, next) => {
     const server = await registerRoutes(app);
 
     // Setup WebSocket server
-    const wss = setupWebSocketServer(server);
+  const wss = setupWebSocketServer(server);
 
-    // Serve static files and add catch-all route for client-side routing
-    serveStatic(app);
+    const isProd = process.env.NODE_ENV === 'production';
 
-    // Add error handling middleware at the end (after all routes and static files)
+    if (isProd) {
+      // In production we expect the client to be pre-built
+      serveStatic(app);
+
+      // Health / readiness endpoints (fast, no DB query to avoid cascading failures)
+      app.get('/healthz', (_req, res) => res.status(200).json({ status: 'ok' }));
+      app.get('/readyz', (_req, res) => {
+        // Later could add lightweight db/redis ping
+        return res.status(200).json({ status: 'ready' });
+      });
+
+      // Explicit SPA fallback AFTER static & API routes, BEFORE notFound
+      const distIndex = path.join(process.cwd(), 'client', 'dist', 'index.html');
+      app.get('*', (req, res, next) => {
+        if (req.method !== 'GET') return next();
+        if (req.path.startsWith('/api')) return next();
+        if (req.path.startsWith('/healthz') || req.path.startsWith('/readyz')) return next();
+        if (!fs.existsSync(distIndex)) return next();
+        res.setHeader('Cache-Control', 'no-cache');
+        return res.sendFile(distIndex);
+      });
+    } else {
+      // In development use Vite middleware for HMR and on-the-fly transforms
+      await setupVite(app, server);
+
+      // SPA fallback: for any non-API, non-static request, let Vite serve index.html
+      app.use((req, res, next) => {
+        if (req.method !== 'GET') return next();
+        if (req.path.startsWith('/api')) return next();
+        // Vite middleware already attached; just fall through to its * handler
+        return next();
+      });
+    }
+
+  // Add error handling middleware at the end (after all routes and static files / SPA fallback)
     app.use(notFound);
     app.use(errorHandler);
 
@@ -78,9 +116,9 @@ app.use((req, res, next) => {
     // ALWAYS serve the app on port 5000
     // this serves both the API and the client.
     // It is the only port that is not firewalled.
-    const port = 5000;
+    const port = Number(process.env.PORT) || 5000;
     server.listen(port, "0.0.0.0", () => {
-      log(`serving on port ${port}`);
+      log(`serving on port ${port} (env PORT=${process.env.PORT || 'unset'})`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);

@@ -19,8 +19,14 @@ export const useWebSocket = () => {
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);  // Get WebSocket URL from server's origin
   const getWebSocketUrl = () => {
-    // Remove the /v2 path and hardcode the URL without it
-    return 'ws://localhost:5000';
+    // In production you may want to derive from window.location
+    // but for now we keep localhost for dev and relative for prod
+    if (typeof window !== 'undefined') {
+      const { protocol, host } = window.location;
+      const wsProto = protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${wsProto}//${host}/ws`;
+    }
+    return 'ws://localhost:5000/ws';
   };
 
   const connect = useCallback(() => {
@@ -46,8 +52,8 @@ export const useWebSocket = () => {
         }
       };
       
-      socket.onclose = () => {
-        console.log('WebSocket disconnected, attempting to reconnect...');
+      socket.onclose = (event) => {
+        console.log('WebSocket disconnected, attempting to reconnect...', { code: event.code, reason: event.reason });
         setIsConnected(false);
         
         // Attempt to reconnect after a delay

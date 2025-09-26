@@ -7,6 +7,7 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  listUsers(): Promise<User[]>;
 
   // Event operations
   getEvents(page: number, limit: number, search?: string, userId?: number): Promise<{ events: EventWithBookings[], total: number }>;
@@ -63,6 +64,16 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error('Database error in createUser:', error);
       throw new Error(`Failed to create user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async listUsers(): Promise<User[]> {
+    try {
+      const result = await db.select().from(users);
+      return result;
+    } catch (error) {
+      console.error('Database error in listUsers:', error);
+      throw new Error('Failed to list users');
     }
   }
 

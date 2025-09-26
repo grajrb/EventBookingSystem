@@ -1,5 +1,6 @@
 import { Server } from 'http';
 import WebSocket, { WebSocketServer } from 'ws';
+import { publishWebSocketMessage } from './services/redis';
 
 // Centralized WebSocket event types
 export const WS_EVENTS = {
@@ -18,10 +19,11 @@ interface WebSocketMessage {
 const clients = new Map<WebSocket, { isAlive: boolean }>();
 
 export function setupWebSocketServer(server: Server) {
-  const wss = new WebSocketServer({ server });
+  // Use dedicated path for application WebSocket (avoid clashing with Vite HMR)
+  const wss = new WebSocketServer({ server, path: '/ws' });
 
-  wss.on('connection', (ws) => {
-    console.log('Client connected to WebSocket');
+  wss.on('connection', (ws, req) => {
+    console.log('Client connected to WebSocket', { ip: req.socket.remoteAddress });
     clients.set(ws, { isAlive: true });
 
     // Ping to verify connection is still alive
@@ -41,9 +43,13 @@ export function setupWebSocketServer(server: Server) {
     });
 
     // Handle disconnection
-    ws.on('close', () => {
-      console.log('Client disconnected from WebSocket');
+    ws.on('close', (code, reason) => {
+      console.log('Client disconnected from WebSocket', { code, reason: reason.toString() });
       clients.delete(ws);
+    });
+
+    ws.on('error', (err) => {
+      console.error('WebSocket client error', err);
     });
   });
 
@@ -64,6 +70,7 @@ export function setupWebSocketServer(server: Server) {
   }, 30000); // Check every 30 seconds
 
   wss.on('close', () => {
+    console.log('WebSocket server closing');
     clearInterval(interval);
   });
 
@@ -71,14 +78,18 @@ export function setupWebSocketServer(server: Server) {
 }
 
 // Function to broadcast a message to all connected clients
-export function broadcast(message: WebSocketMessage) {
+export function broadcast(message: WebSocketMessage, { localOnly = false }: { localOnly?: boolean } = {}) {
   const messageStr = JSON.stringify(message);
-  
+  // Send to local clients
   Array.from(clients.entries()).forEach(([ws, client]) => {
     if (client.isAlive && ws.readyState === WebSocket.OPEN) {
       ws.send(messageStr);
     }
   });
+  // Publish for other instances unless suppressed
+  if (!localOnly) {
+    publishWebSocketMessage(message).catch(() => {});
+  }
 }
 
 // Function to send a message to a specific client

@@ -75,6 +75,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin: promote a user to admin (must already be admin)
+  app.post('/api/admin/users/:id/promote', authenticate, requireAdmin, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const user = await storage.getUser(userId);
+      if (!user) {
+        throw createError('User not found', 404);
+      }
+      if (user.isAdmin) {
+        return res.json({ success: true, message: 'User is already an admin' });
+      }
+      await storage.updateUser(userId, { isAdmin: true } as any);
+      res.json({ success: true, message: 'User promoted to admin' });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Admin: list users
+  app.get('/api/admin/users', authenticate, requireAdmin, async (_req, res, next) => {
+    try {
+      const users = await storage.listUsers();
+      res.json({ success: true, data: users });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/api/auth/login", async (req, res, next) => {
     try {
       const { email, password } = loginSchema.parse(req.body);
@@ -511,9 +539,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.send('Event Booking System API is running.');
       });
 
-      // Error handling middleware
-      app.use(notFound);
-      app.use(errorHandler);
+      // (Removed local notFound/errorHandler registration; global handlers are attached in server/index.ts)
       
       return server;
     }

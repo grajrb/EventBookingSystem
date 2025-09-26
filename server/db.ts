@@ -17,12 +17,38 @@ const connectionString = process.env.DATABASE_URL ||
 
 console.log(`Connecting to PostgreSQL with connection string: ${connectionString.replace(/:[^:]*@/, ':****@')}`);
 
-// Create a new PostgreSQL pool
-export const pool = new pg.Pool({ 
+// Determine SSL usage: allow override with DB_SSL env.
+// Acceptable truthy values: '1', 'true', 'TRUE'.
+const dbSslEnv = (process.env.DB_SSL || '').toLowerCase();
+const forceSsl = dbSslEnv === '1' || dbSslEnv === 'true';
+
+// Detect localhost usage (no SSL needed if host is localhost/127.0.0.1 unless forced)
+let useSsl = false;
+try {
+  const url = new URL(connectionString);
+  const host = url.hostname;
+  const isLocalHost = host === 'localhost' || host === '127.0.0.1';
+  if (forceSsl) {
+    useSsl = true;
+  } else if (!isLocalHost && process.env.NODE_ENV === 'production') {
+    useSsl = true;
+  }
+} catch (_) {
+  // If parsing fails, fall back to previous behavior
+  if (process.env.NODE_ENV === 'production') {
+    useSsl = true;
+  }
+}
+
+if (useSsl) {
+  console.log('[db] SSL enabled for PostgreSQL connection');
+} else {
+  console.log('[db] SSL disabled for PostgreSQL connection');
+}
+
+export const pool = new pg.Pool({
   connectionString,
-  ssl: process.env.NODE_ENV === 'production' ? {
-    rejectUnauthorized: false
-  } : false
+  ssl: useSsl ? { rejectUnauthorized: false } : false,
 });
 
 // Create a Drizzle ORM instance
