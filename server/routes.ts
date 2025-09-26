@@ -27,6 +27,7 @@ import { imageProxyHandler } from './imageProxy';
 import { publishWebSocketMessage } from './services/redis';
 import { broadcastToUser } from './websocket';
 import { broadcast, WS_EVENTS } from "./websocket";
+import { authLimiter, bookingLimiter } from './middleware/rateLimit';
 import rateLimit from 'express-rate-limit';
 import { recordAudit } from './services/audit';
 
@@ -42,7 +43,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // Auth routes
-  app.post("/api/auth/register", async (req, res, next) => {
+  // Apply auth-specific rate limiter to registration & login routes
+  app.post("/api/auth/register", authLimiter, async (req, res, next) => {
     try {
       const userData = registerSchema.parse(req.body);
       
@@ -476,6 +478,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!(dateValue instanceof Date) || isNaN(dateValue.getTime())) {
         throw createError('Invalid date format', 400);
       }
+      // Sanitize image: allow http/https or data URI (limited types) else drop
+      if (req.body.image) {
+        const img: string = String(req.body.image).trim();
+        const httpOk = /^https?:\/\//i.test(img);
+        const dataOk = /^data:image\/(png|jpe?g|gif|webp|avif);base64,[a-zA-Z0-9+/=]+=*$/i.test(img) && img.length <= 2_000_000;
+        if (!httpOk && !dataOk) {
+          req.body.image = undefined; // ignore invalid image rather than fail
+        }
+      }
       const eventData = insertEventSchema.parse({
         ...req.body,
         date: dateValue,
@@ -514,6 +525,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw createError('Invalid date format', 400);
         }
         payload.date = d;
+      }
+      if (payload.image) {
+        const img: string = String(payload.image).trim();
+        const httpOk = /^https?:\/\//i.test(img);
+        const dataOk = /^data:image\/(png|jpe?g|gif|webp|avif);base64,[a-zA-Z0-9+/=]+=*$/i.test(img) && img.length <= 2_000_000;
+        if (!httpOk && !dataOk) delete payload.image;
       }
       const eventData = insertEventSchema.partial().parse(payload);
 
@@ -560,6 +577,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw createError('Invalid date format', 400);
         }
         payload.date = d;
+      }
+      if (payload.image) {
+        const img: string = String(payload.image).trim();
+        const httpOk = /^https?:\/\//i.test(img);
+        const dataOk = /^data:image\/(png|jpe?g|gif|webp|avif);base64,[a-zA-Z0-9+/=]+=*$/i.test(img) && img.length <= 2_000_000;
+        if (!httpOk && !dataOk) delete payload.image;
       }
       // Use schema partial for validation (strip unknowns)
       const validated = insertEventSchema.partial().parse(payload);
@@ -615,7 +638,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Booking routes
-  app.post("/api/events/:id/book", authenticate, async (req, res, next) => {
+  app.post("/api/events/:id/book", authenticate, bookingLimiter, async (req, res, next) => {
     try {
       const eventId = parseInt(req.params.id);
       const userId = req.user!.id;
@@ -702,7 +725,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/events/:id/book", authenticate, async (req, res, next) => {
+  app.delete("/api/events/:id/book", authenticate, bookingLimiter, async (req, res, next) => {
     try {
       const eventId = parseInt(req.params.id);
       const userId = req.user!.id;

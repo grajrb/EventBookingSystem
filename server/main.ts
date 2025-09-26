@@ -1,12 +1,11 @@
 import express from "express";
 import { createServer } from "http";
 import path from "path";
-import { fileURLToPath } from "url";
 import { storage } from "./storage";
 import { hashPassword, comparePassword, generateToken } from "./services/auth";
 import { authenticate, requireAdmin } from "./middleware/auth";
 import { errorHandler, notFound, createError } from "./middleware/errorHandler";
-import { insertUserSchema, insertEventSchema, insertBookingSchema, loginSchema, registerSchema } from "@shared/schema";
+import { insertEventSchema, loginSchema, registerSchema } from "@shared/schema";
 import { connectRedis, getEventSlots, setEventSlots, decrementEventSlots, incrementEventSlots, invalidateEventSlots } from "./services/redis";
 
 const app = express();

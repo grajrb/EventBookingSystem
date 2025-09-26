@@ -17,7 +17,9 @@ import { eventsAPI } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Event } from "../types";
 
-const imageUrlRegex = /^https?:\/\/[\w.-]+(?:\/[\w%./?=&#-]*)?$/i;
+// Accept http/https image URLs or base64 data URIs (jpeg/png/gif/webp/avif)
+const httpImageRegex = /^https?:\/\/[\w.-]+(?:\/[\w%./?=&#-]*)?$/i;
+const dataImageRegex = /^data:image\/(png|jpe?g|gif|webp|avif);base64,[a-zA-Z0-9+/=]+=*$/i;
 const eventSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
   description: z.string().min(10, "Description must be at least 10 characters"),
@@ -29,13 +31,15 @@ const eventSchema = z.object({
     .string()
     .optional()
     .or(z.literal('').transform(() => undefined))
+    .transform((val) => (val ? val.trim() : val))
     .refine((val) => {
-      if (!val) return true;
-      if (val.length > 500) return false;
-      // Accept general http(s) and common Google image redirect patterns
-      if (imageUrlRegex.test(val)) return true;
+      if (!val) return true; // optional
+      // Allow reasonably large data URIs (approx < ~1.5MB -> ~2,000,000 chars)
+      if (val.length > 2_000_000) return false;
+      if (httpImageRegex.test(val)) return true;
+      if (dataImageRegex.test(val)) return true;
       return false;
-    }, 'Must be a valid image URL (http/https)')
+    }, 'Must be a valid image URL (http/https) or data URI (data:image/...)')
 });
 
 type EventFormData = z.infer<typeof eventSchema>;

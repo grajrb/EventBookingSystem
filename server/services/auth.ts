@@ -2,7 +2,16 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { User } from '@shared/schema';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key';
+// Enforce strong JWT secret at module load so a misconfiguration fails fast.
+const rawSecret = process.env.JWT_SECRET;
+if (!rawSecret) {
+  throw new Error('JWT_SECRET environment variable is required and must be set to a strong random value.');
+}
+if (rawSecret.length < 32) {
+  // 256 bits (32 chars min if using full entropy) recommended; length check is a heuristic.
+  throw new Error('JWT_SECRET is too short. Use at least 32 characters of high-entropy secret material.');
+}
+const JWT_SECRET = rawSecret;
 const JWT_EXPIRES_IN = '7d';
 const SALT_ROUNDS = 12;
 

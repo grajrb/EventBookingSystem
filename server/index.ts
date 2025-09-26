@@ -2,6 +2,9 @@
 import 'dotenv/config';
 
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from 'helmet';
+import compression from 'compression';
+import { baseLimiter } from './middleware/rateLimit';
 import { registerRoutes } from "./routes";
 import { serveStatic, setupVite, log } from "./vite";
 import { setupWebSocketServer } from "./websocket";
@@ -10,20 +13,42 @@ import path from 'path';
 import { errorHandler, notFound } from "./middleware/errorHandler";
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+// Trust proxy for correct IPs & protocol when behind reverse proxy (adjust if not needed)
+app.set('trust proxy', 1);
+
+// Security headers
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+
+// Compression for responses
+app.use(compression());
+
+// Body parsers with explicit limits
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+
+// Global basic rate limiter (more specific ones mounted in routes.ts)
+app.use('/api', baseLimiter);
 
 // Avoid noisy 404 logs for favicon
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
-// CORS middleware for both HTTP and WebSocket
+// CORS middleware (configurable via ALLOWED_ORIGINS env as comma-separated list; defaults to *)
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '*')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
+  const origin = req.headers.origin as string | undefined;
+  if (allowedOrigins.includes('*')) {
+    res.header('Access-Control-Allow-Origin', '*');
+  } else if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
   }
+  res.header('Vary', 'Origin');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') return res.status(200).end();
   next();
 });
 

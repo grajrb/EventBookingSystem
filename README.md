@@ -20,6 +20,8 @@ A full-stack application for browsing and booking event slots, with real-time av
 - CSV export for booking data
 - Real-time slot availability updates via WebSockets
 - Comprehensive Redis caching for improved performance
+- Secure image handling (http/https URLs or validated base64 data URIs)
+- Security hardening: helmet headers, compression, granular rate limiting, configurable CORS origins
 
 ## Tech Stack
 
@@ -83,12 +85,13 @@ Required (recommended) variables in `.env`:
 
 ```env
 DATABASE_URL=postgres://user:pass@host:5432/dbname
-JWT_SECRET=your_jwt_secret
+JWT_SECRET=your_long_random_jwt_secret_value_at_least_32_chars
 REDIS_URL=redis://localhost:6379
 NODE_ENV=development
 DB_SSL=false                # set true if your managed Postgres requires SSL
 MOCK_DB=false               # when true (or dev) login with test@example.com/password works without DB
 PORT=5000                   # server listen port
+ALLOWED_ORIGINS=*           # comma separated list, * for all (prod: set specific hosts)
 ```
 
 ## Production Build & Deployment
@@ -174,7 +177,18 @@ Two methods to grant admin rights:
 
 ## Event Images
 
-Event creation/edit form now supports an Image URL field. Provide any direct image link (CDN, public hosting). Leave blank for placeholder. Update via:
+Event creation/edit form supports an Image field. You may supply:
+
+1. A standard http/https image URL (JPG, PNG, GIF, WebP, AVIF, etc.)
+2. A base64 data URI of the form: `data:image/(png|jpeg|jpg|gif|webp|avif);base64,<data>`
+
+Validation & limits:
+- Data URI max length ~2,000,000 characters (~1.5MB). Longer strings are rejected.
+- Only listed mime subtypes accepted.
+- http/https URLs are fetched through `/api/image-proxy` with size & content-type validation.
+- Server re-sanitizes input; invalid values are rejected with a validation error.
+
+Example update:
 
 ```http
 PUT /api/events/:id
@@ -220,7 +234,16 @@ Notes:
 
 ## Rate Limiting
 
-`POST /api/admin/users/:id/promote` is limited (20 requests / 15 minutes per IP) to reduce abuse.
+Multiple layers of rate limiting reduce abuse:
+
+| Scope | Limit | Window |
+|-------|-------|--------|
+| All /api routes (baseLimiter) | 100 req/IP | 15 min |
+| Auth routes (/api/auth/*) | 10 req/IP | 1 hr |
+| Booking routes (POST/DELETE /api/events/:id/book) | 50 req/IP | 1 hr |
+| Admin promote user | 20 req/IP | 15 min |
+
+When exceeded, HTTP 429 with JSON message is returned. Adjust thresholds in `server/middleware/rateLimit.ts`.
 
 ## Multi-Instance WebSocket Scaling
 
@@ -253,3 +276,29 @@ This project is licensed under the [MIT License](LICENSE). See the [LICENSE](LIC
 ## Created By
 
 Gaurav Raj
+
+---
+
+## Security Hardening Summary
+
+Implemented:
+- Mandatory strong JWT secret (startup fails if missing or <32 chars)
+- Helmet default headers (CSP can be layered later)
+- Compression (gzip) for responses
+- Strict body size limit (1MB JSON/forms)
+- Configurable CORS via `ALLOWED_ORIGINS` (default `*` for dev)
+- Granular rate limiting (global + auth + booking + admin)
+- Audit logs for critical mutations (users, events, bookings, notifications)
+
+Planned / Recommended Enhancements:
+- Add Content Security Policy tailored to deployed asset domains
+- Replace wildcard origins in production with explicit domains
+- Add DB-level transactional fallback for slot decrement if Redis unavailable
+- Introduce structured logging (JSON) for easier ingestion into monitoring stack
+- Implement refresh token rotation & shorter-lived access tokens
+
+---
+
+## Concurrency Note
+
+Slot availability primarily enforced atomically through Redis. If Redis is unavailable, the fallback path reduces concurrency guarantees; for mission-critical deployments, add a database-side conditional update (e.g., `UPDATE events SET available_slots = available_slots - 1 WHERE id=? AND available_slots > 0`) within a transaction and verify affected row count.
