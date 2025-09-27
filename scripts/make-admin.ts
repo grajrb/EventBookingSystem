@@ -8,6 +8,10 @@ import { storage } from '../server/storage';
  * Any omitted field will use a default.
  */
 async function run() {
+  if (process.env.DISABLE_MAKE_ADMIN === 'true') {
+    console.error('[make-admin] Disabled by DISABLE_MAKE_ADMIN env var. Aborting.');
+    process.exit(1);
+  }
   // Parse simple key=value args
   const args = process.argv.slice(2).reduce<Record<string,string>>((acc, cur) => {
     const [k, ...rest] = cur.split('=');
