@@ -54,28 +54,32 @@ A full-stack application for browsing and booking event slots, with real-time av
    cd EventBookingSystem
    ```
 
-2. Install dependencies:
-   ```
-   npm install
-   ```
+1. Install dependencies:
 
-3. Set up environment variables:
+```bash
+npm install
+```
+
+1. Set up environment variables:
    - Copy `.env.example` to `.env`
    - Fill in your database and Redis connection details
 
-4. Initialize the database:
-   ```
-   npm run db:push
-   ```
+1. Initialize the database:
 
-5. Start the development server:
-   ```
-   npm run dev
-   ```
+```bash
+npm run db:push
+```
 
-The Vite dev client will be available at http://localhost:5173 (default) proxied API at http://localhost:5000 (server). All traffic including WebSocket (path `/ws`) is served via port 5000 when using the integrated dev script.
+1. Start the development server:
+
+```bash
+npm run dev
+```
+
+The Vite dev client will be available at <http://localhost:5173> (default) and the API at <http://localhost:5000>. All traffic including WebSocket (path `/ws`) is served via port 5000 when using the integrated dev script.
 
 ### Dev Scripts
+
 
 ```bash
 npm run dev          # Starts server only (Express + Vite middleware)
@@ -119,10 +123,11 @@ CSP_EXTRA_ORIGINS=          # optional additional origins for script/style/conne
    ```
 
 The server now serves:
-* API under `/api/*`
-* Static SPA from `client/dist` with an Express fallback for deep links
-* WebSocket endpoint at `/ws`
-* Health endpoints: `/healthz` (liveness) and `/readyz` (readiness)
+
+- API under `/api/*`
+- Static SPA from `client/dist` with an Express fallback for deep links
+- WebSocket endpoint at `/ws`
+- Health endpoints: `/healthz` (liveness) and `/readyz` (readiness)
 
 ### Render Deployment (Single Service)
 
@@ -214,6 +219,7 @@ Ensure refresh token table exists in `shared/schema.ts` (if you added it) and th
 
 ---
 
+
 ### Container / Reverse Proxy Notes
 If using Nginx or another proxy, be sure to forward WebSocket upgrades for path `/ws`.
 
@@ -256,6 +262,17 @@ Planned future coverage:
 - Reverse proxy passes through `/api`, `/ws`, and serves other paths to the Node app (or serve static directly with fallback kept)
 - Monitor `/healthz` and `/readyz` for platform health checks
 - Configure log drain or persist stdout
+
+### Keep-Alive (Cold Start Mitigation)
+
+Because free tiers may spin down after inactivity, a GitHub Actions workflow (`.github/workflows/keepalive.yml`) is included to ping the application every 10 minutes with a small random jitter. This helps reduce cold start latency but has important caveats:
+
+- Respect provider Terms of Service; excessive artificial traffic can violate policies.
+- It does not guarantee zero cold starts (provider may still recycle the instance).
+- Disable or adjust the schedule if you upgrade to an always-on plan.
+- If you use a separate frontend domain later, you can add additional curl steps there.
+
+To disable: delete the workflow file or comment out the `schedule` section.
 
 ## Scaling Notes
 

@@ -1,0 +1,36 @@
+name: Keep Render Service Warm
+
+# This workflow sends a periodic request to the production site to reduce cold starts.
+# NOTE: Excessive “keep warm” pings may violate some providers’ ToS. Use responsibly.
+
+on:
+  schedule:
+    # Every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add random jitter (0-60s) to avoid being a perfect interval
+        run: |
+          JITTER=$(( RANDOM % 60 ))
+          echo "Sleeping for $JITTER seconds to add jitter" 
+          sleep $JITTER
+      - name: Curl primary URL (root)
+        run: |
+          set -e
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' https://eventbookingsystem-z33l.onrender.com/)
+          echo "Root status: $HTTP_CODE"
+          if [ "$HTTP_CODE" -ge 500 ]; then
+            echo "Root returned server error" && exit 1
+          fi
+      - name: Curl health endpoint
+        run: |
+          set -e
+          HEALTH_CODE=$(curl -s -o /dev/null -w '%{http_code}' https://eventbookingsystem-z33l.onrender.com/healthz || true)
+          echo "Health status: $HEALTH_CODE"
+          # Don't fail if health endpoint blocked; just log.
+      - name: Summary
+        run: echo "Ping complete at $(date -u)" 
