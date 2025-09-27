@@ -226,8 +226,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) throw createError('User not found', 404);
       const ok = await comparePassword(currentPassword, user.password);
       if (!ok) throw createError('Current password is incorrect', 401);
-      const hashed = await hashPassword(newPassword);
-      await storage.updateUser(user.id, { password: hashed } as any);
+  const hashed = await hashPassword(newPassword);
+  await storage.updateUser(user.id, { password: hashed, tokenVersion: (user as any).tokenVersion + 1 } as any);
       // Revoke existing refresh tokens & issue new pair for immediate rotation
       try {
         const { sql } = await import('drizzle-orm');
@@ -256,7 +256,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Ensure email not taken
       const existing = await storage.getUserByEmail(newEmail);
       if (existing && existing.id !== user.id) throw createError('Email already in use', 400);
-      await storage.updateUser(user.id, { email: newEmail } as any);
+  await storage.updateUser(user.id, { email: newEmail, tokenVersion: (user as any).tokenVersion + 1 } as any);
       try {
         const { sql } = await import('drizzle-orm');
         const { db } = await import('./db');

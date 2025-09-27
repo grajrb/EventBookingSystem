@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { profileAPI } from '@/lib/api';
 import { useAuth } from '@/hooks/use-auth';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -17,7 +17,6 @@ const formSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   bio: z.string().max(500).optional().or(z.literal('')),
   avatarUrl: z.string().url().max(500).optional().or(z.literal('')),
-  preferences: z.string().optional().or(z.literal('')),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -26,22 +25,21 @@ export default function ProfilePage() {
   const { toast } = useToast();
   const { logout } = useAuth();
   const [showDelete, setShowDelete] = useState(false);
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['profile'], queryFn: () => profileAPI.get().then(r => r.data) });
 
   const mutation = useMutation({
-    mutationFn: (values: FormValues) => {
-      let prefs: any = undefined;
-      if (values.preferences) {
-        try { prefs = JSON.parse(values.preferences); } catch {}
+    mutationFn: (values: FormValues) => profileAPI.update({
+      name: values.name,
+      bio: values.bio || undefined,
+      avatarUrl: values.avatarUrl || undefined,
+    }),
+    onSuccess: (resp: any) => {
+      const updated = resp?.data;
+      if (updated) {
+        queryClient.setQueryData(['profile'], updated);
+        queryClient.setQueryData(['auth','me'], (old: any) => old ? { ...old, name: updated.name, email: updated.email, isAdmin: updated.isAdmin } : old);
       }
-      return profileAPI.update({
-        name: values.name,
-        bio: values.bio || undefined,
-        avatarUrl: values.avatarUrl || undefined,
-        preferences: prefs,
-      });
-    },
-    onSuccess: () => {
       toast({ title: 'Profile Updated' });
     },
     onError: (err: any) => {
@@ -64,7 +62,7 @@ export default function ProfilePage() {
     onError: (err: any) => showApiError(toast, err, 'Failed to change password')
   });
 
-  const deleteSchema = z.object({ password: z.string().min(6).optional() });
+  const deleteSchema = z.object({ password: z.string().min(6) });
   type DeleteValues = z.infer<typeof deleteSchema>;
   const { register: delRegister, handleSubmit: handleDeleteSubmit, formState: { errors: delErrors }, reset: resetDelete } = useForm<DeleteValues>({ resolver: zodResolver(deleteSchema) });
   const deleteMutation = useMutation({
@@ -84,7 +82,7 @@ export default function ProfilePage() {
         name: data.name || '',
         bio: data.bio || '',
         avatarUrl: data.avatarUrl || '',
-        preferences: data.preferences ? JSON.stringify(data.preferences, null, 2) : ''
+        
       });
     }
   }, [data, reset]);
@@ -118,14 +116,6 @@ export default function ProfilePage() {
                   <label className="block text-sm font-medium mb-1">Avatar URL</label>
                   <Input placeholder="https://..." {...register('avatarUrl')} />
                   {errors.avatarUrl && <p className="text-xs text-red-600 mt-1">{errors.avatarUrl.message}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 flex items-center justify-between">
-                    <span>Preferences JSON</span>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => reset(v => ({ ...v, preferences: JSON.stringify({ theme: 'light' }, null, 2) }))}>Sample</Button>
-                  </label>
-                  <Textarea rows={6} placeholder='{"theme":"dark"}' {...register('preferences')} />
-                  {errors.preferences && <p className="text-xs text-red-600 mt-1">{errors.preferences.message}</p>}
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? 'Saving...' : 'Save Changes'}</Button>
@@ -173,9 +163,9 @@ export default function ProfilePage() {
                     <DialogTitle>Confirm Account Deletion</DialogTitle>
                   </DialogHeader>
                   <form onSubmit={handleDeleteSubmit(v => deleteMutation.mutate(v))} className="space-y-4">
-                    <p className="text-sm">Optionally confirm with your password (required if server enforces).</p>
+                    <p className="text-sm">Enter your password to confirm deletion. This cannot be undone.</p>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Password (optional)</label>
+                      <label className="block text-sm font-medium mb-1">Password</label>
                       <Input type="password" placeholder="••••••" {...delRegister('password')} />
                       {delErrors.password && <p className="text-xs text-red-600 mt-1">{delErrors.password.message}</p>}
                     </div>

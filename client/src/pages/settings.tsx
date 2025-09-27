@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -23,6 +24,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const { logout } = useAuth();
   const [openDelete, setOpenDelete] = useState(false);
+  const queryClient = useQueryClient();
 
   const pwForm = useForm<PasswordValues>({ resolver: zodResolver(passwordSchema) });
   const emForm = useForm<EmailValues>({ resolver: zodResolver(emailSchema) });
@@ -40,6 +42,7 @@ export default function SettingsPage() {
         localStorage.setItem('token', res.data.token);
         if (res.data.refreshToken) localStorage.setItem('refreshToken', res.data.refreshToken);
       }
+      // Nothing to change in cached profile other than maybe security timestamp; omitted.
       toast({ title: 'Password updated' });
       pwForm.reset();
     } catch (e:any) {
@@ -54,6 +57,10 @@ export default function SettingsPage() {
       if (res.data?.token) {
         localStorage.setItem('token', res.data.token);
         if (res.data.refreshToken) localStorage.setItem('refreshToken', res.data.refreshToken);
+      }
+      if (res.data?.user) {
+        queryClient.setQueryData(['profile'], (old: any) => old ? { ...old, email: res.data.user.email } : old);
+        queryClient.setQueryData(['auth','me'], (old: any) => old ? { ...old, email: res.data.user.email } : old);
       }
       toast({ title: 'Email updated' });
       emForm.reset();

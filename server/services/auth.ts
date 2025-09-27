@@ -30,6 +30,7 @@ export const generateToken = (user: User): string => {
     id: user.id,
     email: user.email,
     isAdmin: user.isAdmin,
+    tokenVersion: (user as any).tokenVersion ?? 0,
   };
   
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
@@ -72,4 +73,5 @@ export interface AuthUser {
   id: number;
   email: string;
   isAdmin: boolean;
+  tokenVersion: number;
 }

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, AuthUser } from '../services/auth';
+import { storage } from '../storage';
 
 declare global {
   namespace Express {
@@ -19,9 +20,17 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
   const token = authHeader.substring(7);
 
   try {
-    const payload = verifyToken(token);
-    req.user = payload;
-    next();
+    const payload = verifyToken(token) as AuthUser;
+    // Validate tokenVersion against current DB to allow global invalidation
+    storage.getUser(payload.id).then(user => {
+      if (!user) return res.status(401).json({ message: 'Invalid token user' });
+      const currentVersion = (user as any).tokenVersion ?? 0;
+      if (currentVersion !== payload.tokenVersion) {
+        return res.status(401).json({ message: 'Token no longer valid (version mismatch)' });
+      }
+      req.user = payload;
+      next();
+    }).catch(()=> res.status(500).json({ message: 'Auth verification failed' }));
   } catch (error) {
     return res.status(401).json({ message: 'Invalid token' });
   }
