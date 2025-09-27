@@ -134,6 +134,21 @@ export const profileUpdateSchema = z.object({
   preferences: z.record(z.any()).optional(),
 });
 
+// Account management schemas
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(6, 'Current password required'),
+  newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+});
+
+export const deleteAccountSchema = z.object({
+  password: z.string().min(6, 'Password required for confirmation'),
+});
+
+export const changeEmailSchema = z.object({
+  password: z.string().min(6, 'Password required'),
+  newEmail: z.string().email('Valid email required'),
+});
+
 export type User = typeof users.$inferSelect;
 export type Event = typeof events.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;
@@ -145,6 +160,9 @@ export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type LoginRequest = z.infer<typeof loginSchema>;
 export type RegisterRequest = z.infer<typeof registerSchema>;
 export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
+export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>;
+export type DeleteAccountRequest = z.infer<typeof deleteAccountSchema>;
+export type ChangeEmailRequest = z.infer<typeof changeEmailSchema>;
 
 // Event with booking count
 export type EventWithBookings = Event & {

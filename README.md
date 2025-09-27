@@ -129,6 +129,24 @@ The server now serves:
 - WebSocket endpoint at `/ws`
 - Health endpoints: `/healthz` (liveness) and `/readyz` (readiness)
 
+### Account Settings Enhancements
+
+The profile page now includes:
+
+- Profile update (name, bio, avatar URL, JSON preferences)
+- Change password (current + new password validation)
+- Account deletion (with safeguard to prevent deleting the last admin)
+
+API endpoints:
+
+```http
+PUT    /api/profile               # Update profile fields
+POST   /api/profile/password      # Change password
+DELETE /api/profile               # Delete own account (cannot remove last admin)
+```
+
+Errors surface through the unified ApiError toast system. Deleting an account revokes refresh tokens (best-effort) and logs out the user client-side.
+
 ### Render Deployment (Single Service)
 
 Deploy this application to Render as a single Web Service serving API + static client.

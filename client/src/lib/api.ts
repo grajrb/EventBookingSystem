@@ -156,5 +156,17 @@ export const profileAPI = {
   update: async (data: { name?: string; bio?: string; avatarUrl?: string; preferences?: any }): Promise<ApiResponse<any>> => {
     const response = await apiRequest('PUT', '/api/profile', data);
     return response.json();
+  },
+  changePassword: async (payload: { currentPassword: string; newPassword: string }): Promise<ApiResponse<any>> => {
+    const response = await apiRequest('POST', '/api/profile/password', payload);
+    return response.json();
+  },
+  changeEmail: async (payload: { password: string; newEmail: string }): Promise<ApiResponse<any>> => {
+    const response = await apiRequest('POST', '/api/profile/email', payload);
+    return response.json();
+  },
+  deleteAccount: async (payload: { password?: string }): Promise<ApiResponse<any>> => {
+    const response = await apiRequest('DELETE', '/api/profile', payload);
+    return response.json();
   }
 };

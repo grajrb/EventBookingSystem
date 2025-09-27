@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { profileAPI } from '@/lib/api';
+import { useAuth } from '@/hooks/use-auth';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { showApiError } from '@/lib/errors';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -22,6 +24,8 @@ type FormValues = z.infer<typeof formSchema>;
 
 export default function ProfilePage() {
   const { toast } = useToast();
+  const { logout } = useAuth();
+  const [showDelete, setShowDelete] = useState(false);
   const { data, isLoading } = useQuery({ queryKey: ['profile'], queryFn: () => profileAPI.get().then(r => r.data) });
 
   const mutation = useMutation({
@@ -43,6 +47,33 @@ export default function ProfilePage() {
     onError: (err: any) => {
       showApiError(toast, err, 'Failed to update profile');
     }
+  });
+
+  const passwordSchema = z.object({
+    currentPassword: z.string().min(6),
+    newPassword: z.string().min(6),
+  });
+  type PasswordValues = z.infer<typeof passwordSchema>;
+  const { register: pwRegister, handleSubmit: handlePwSubmit, reset: resetPw, formState: { errors: pwErrors } } = useForm<PasswordValues>({ resolver: zodResolver(passwordSchema) });
+  const passwordMutation = useMutation({
+    mutationFn: (values: PasswordValues) => profileAPI.changePassword(values),
+    onSuccess: () => {
+      toast({ title: 'Password Updated' });
+      resetPw();
+    },
+    onError: (err: any) => showApiError(toast, err, 'Failed to change password')
+  });
+
+  const deleteSchema = z.object({ password: z.string().min(6).optional() });
+  type DeleteValues = z.infer<typeof deleteSchema>;
+  const { register: delRegister, handleSubmit: handleDeleteSubmit, formState: { errors: delErrors }, reset: resetDelete } = useForm<DeleteValues>({ resolver: zodResolver(deleteSchema) });
+  const deleteMutation = useMutation({
+    mutationFn: (values: DeleteValues) => profileAPI.deleteAccount(values),
+    onSuccess: () => {
+      toast({ title: 'Account Deleted', description: 'Your account has been removed.' });
+      logout();
+    },
+    onError: (err: any) => showApiError(toast, err, 'Failed to delete account')
   });
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({ resolver: zodResolver(formSchema) });
@@ -103,6 +134,61 @@ export default function ProfilePage() {
             )}
           </CardContent>
         </Card>
+        <div className="mt-8 grid gap-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Change Password</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handlePwSubmit(v => passwordMutation.mutate(v))} className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Current Password</label>
+                  <Input type="password" {...pwRegister('currentPassword')} />
+                  {pwErrors.currentPassword && <p className="text-xs text-red-600 mt-1">{pwErrors.currentPassword.message}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">New Password</label>
+                  <Input type="password" {...pwRegister('newPassword')} />
+                  {pwErrors.newPassword && <p className="text-xs text-red-600 mt-1">{pwErrors.newPassword.message}</p>}
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={passwordMutation.isPending}>{passwordMutation.isPending ? 'Updating...' : 'Update Password'}</Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card className="border-red-300">
+            <CardHeader>
+              <CardTitle className="text-red-700">Danger Zone</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">This action will permanently delete your account. This cannot be undone.</p>
+              <Dialog open={showDelete} onOpenChange={(o)=>{ setShowDelete(o); if(!o) resetDelete(); }}>
+                <DialogTrigger asChild>
+                  <Button variant="destructive">Delete Account</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Confirm Account Deletion</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleDeleteSubmit(v => deleteMutation.mutate(v))} className="space-y-4">
+                    <p className="text-sm">Optionally confirm with your password (required if server enforces).</p>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Password (optional)</label>
+                      <Input type="password" placeholder="••••••" {...delRegister('password')} />
+                      {delErrors.password && <p className="text-xs text-red-600 mt-1">{delErrors.password.message}</p>}
+                    </div>
+                    <DialogFooter className="flex justify-end gap-2">
+                      <Button type="button" variant="outline" onClick={()=>setShowDelete(false)}>Cancel</Button>
+                      <Button type="submit" variant="destructive" disabled={deleteMutation.isPending}>{deleteMutation.isPending ? 'Deleting...' : 'Delete Account'}</Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </CardContent>
+          </Card>
+        </div>
       </main>
     </div>
   );

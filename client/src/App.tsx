@@ -12,6 +12,7 @@ import Login from "./pages/login";
 import Dashboard from "./pages/dashboard";
 import Admin from "./pages/admin";
 import Profile from './pages/profile';
+import Settings from './pages/settings';
 import AuditLogs from './pages/audit-logs';
 import NotFound from "@/pages/not-found";
 
@@ -63,6 +64,12 @@ function Router() {
         <ProtectedRoute>
           <Navbar />
           <Profile />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/settings">
+        <ProtectedRoute>
+          <Navbar />
+          <Settings />
         </ProtectedRoute>
       </Route>
       <Route path="/admin">

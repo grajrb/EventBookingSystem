@@ -22,7 +22,7 @@ import { hashPassword, comparePassword, generateToken, createRefreshToken, verif
 import { authenticate, requireAdmin } from "./middleware/auth";
 import { errorHandler, notFound, createError } from "./middleware/errorHandler";
 import crypto from 'crypto';
-import { insertUserSchema, insertEventSchema, insertBookingSchema, loginSchema, registerSchema, profileUpdateSchema, insertNotificationSchema } from "@shared/schema";
+import { insertUserSchema, insertEventSchema, insertBookingSchema, loginSchema, registerSchema, profileUpdateSchema, insertNotificationSchema, changePasswordSchema, deleteAccountSchema, changeEmailSchema } from "@shared/schema";
 import { imageProxyHandler } from './imageProxy';
 import { publishWebSocketMessage } from './services/redis';
 import { broadcastToUser } from './websocket';
@@ -215,6 +215,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
       recordAudit(req.user!.id, 'UPDATE_PROFILE', 'user', req.user!.id, { fields: Object.keys(data) });
       let prefs: any = undefined; try { if (updated.preferences) prefs = JSON.parse(updated.preferences as any); } catch {}
       res.json({ success:true, data: { id:updated.id, email:updated.email, name:updated.name, bio:updated.bio, avatarUrl:updated.avatarUrl, preferences:prefs, isAdmin:updated.isAdmin } });
+    } catch (error) { next(error); }
+  });
+
+  // Change password
+  app.post('/api/profile/password', authenticate, async (req, res, next) => {
+    try {
+      const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+      const user = await storage.getUser(req.user!.id);
+      if (!user) throw createError('User not found', 404);
+      const ok = await comparePassword(currentPassword, user.password);
+      if (!ok) throw createError('Current password is incorrect', 401);
+      const hashed = await hashPassword(newPassword);
+      await storage.updateUser(user.id, { password: hashed } as any);
+      // Revoke existing refresh tokens & issue new pair for immediate rotation
+      try {
+        const { sql } = await import('drizzle-orm');
+        const { db } = await import('./db');
+        await db.execute(sql`DELETE FROM refresh_tokens WHERE user_id = ${user.id}` as any);
+        const access = generateToken({ ...user, password: undefined } as any);
+        const { token: refreshToken, expiresAt } = await createRefreshToken(user.id);
+        recordAudit(req.user!.id, 'CHANGE_PASSWORD', 'user', user.id, {});
+        return res.json({ success:true, message: 'Password updated successfully', data: { token: access, refreshToken, refreshExpiresAt: expiresAt } });
+      } catch {
+        // Fallback: still respond success without new tokens
+        recordAudit(req.user!.id, 'CHANGE_PASSWORD', 'user', user.id, { rotated: false });
+        return res.json({ success:true, message: 'Password updated successfully (tokens not rotated)' });
+      }
+    } catch (error) { next(error); }
+  });
+
+  // Change email (requires password) - issues new tokens
+  app.post('/api/profile/email', authenticate, async (req, res, next) => {
+    try {
+      const { password, newEmail } = changeEmailSchema.parse(req.body);
+      const user = await storage.getUser(req.user!.id);
+      if (!user) throw createError('User not found', 404);
+      const ok = await comparePassword(password, user.password);
+      if (!ok) throw createError('Password is incorrect', 401);
+      // Ensure email not taken
+      const existing = await storage.getUserByEmail(newEmail);
+      if (existing && existing.id !== user.id) throw createError('Email already in use', 400);
+      await storage.updateUser(user.id, { email: newEmail } as any);
+      try {
+        const { sql } = await import('drizzle-orm');
+        const { db } = await import('./db');
+        await db.execute(sql`DELETE FROM refresh_tokens WHERE user_id = ${user.id}` as any);
+      } catch {}
+      const updated = await storage.getUser(user.id);
+      if (!updated) throw createError('User not found after update', 500);
+      const access = generateToken(updated as any);
+      const { token: refreshToken, expiresAt } = await createRefreshToken(updated.id);
+      recordAudit(req.user!.id, 'CHANGE_EMAIL', 'user', user.id, { newEmail });
+      res.json({ success:true, message:'Email updated', data: { user: { id: updated.id, email: updated.email, name: updated.name, isAdmin: updated.isAdmin }, token: access, refreshToken, refreshExpiresAt: expiresAt } });
+    } catch (error) { next(error); }
+  });
+
+  // Delete own account (with safeguards: cannot delete last admin)
+  app.delete('/api/profile', authenticate, async (req, res, next) => {
+    try {
+      const { password } = deleteAccountSchema.parse(req.body || {});
+      const user = await storage.getUser(req.user!.id);
+      if (!user) throw createError('User not found', 404);
+      const okPw = await comparePassword(password, user.password);
+      if (!okPw) throw createError('Password is incorrect', 401);
+      // If user is admin ensure not last admin
+      if (user.isAdmin) {
+        const { users: all } = await storage.paginateUsers({ page:1, limit:1000, search:undefined, sortField:'id', direction:'asc' });
+        const adminCount = all.filter(u=>u.isAdmin).length;
+        if (adminCount <= 1) throw createError('Cannot delete the last remaining admin account', 400);
+      }
+      const ok = await storage.deleteUser(user.id);
+      if (!ok) throw createError('Failed to delete account', 500);
+      recordAudit(user.id, 'DELETE_SELF', 'user', user.id, {});
+      // Best-effort: revoke refresh tokens for this user
+      try {
+        const { sql } = await import('drizzle-orm');
+        const { db } = await import('./db');
+        await db.execute(sql`DELETE FROM refresh_tokens WHERE user_id = ${user.id}` as any);
+      } catch {}
+      res.json({ success:true, message:'Account deleted' });
     } catch (error) { next(error); }
   });
 

@@ -33,4 +33,4 @@ jobs:
           echo "Health status: $HEALTH_CODE"
           # Don't fail if health endpoint blocked; just log.
       - name: Summary
-        run: echo "Ping complete at $(date -u)" 
+        run: echo "Ping complete at $(date -u)"
