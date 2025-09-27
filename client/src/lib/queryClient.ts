@@ -1,9 +1,12 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 // API base URL configuration
-export const API_BASE_URL = import.meta.env.PROD 
-  ? 'https://event-booking-system-api.onrender.com' // Update this with your actual production API URL when deployed
-  : '';
+// In production we either:
+//  - use VITE_API_URL if provided (allows deploying frontend separate from API)
+//  - or default to same-origin (empty string) when API and client are served together
+// Previous hard-coded placeholder caused  network errors in production ("Failed to fetch").
+const configured = (import.meta as any).env?.VITE_API_URL as string | undefined;
+export const API_BASE_URL = (configured && configured.trim()) ? configured.replace(/\/+$/, '') : '';
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
