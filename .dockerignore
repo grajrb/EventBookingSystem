@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+dist
+client/dist
+Dockerfile.dev
+.git
+.gitignore
+*.md
+*.log
+.cache
+.vite
+coverage
+.tmp
+.env
+.env.local

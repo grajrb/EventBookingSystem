@@ -18,7 +18,7 @@ import {
   setAdminStats,
   invalidateAdminStats
 } from "./services/redis";
-import { hashPassword, comparePassword, generateToken } from "./services/auth";
+import { hashPassword, comparePassword, generateToken, createRefreshToken, verifyRefreshToken, rotateRefreshToken } from "./services/auth";
 import { authenticate, requireAdmin } from "./middleware/auth";
 import { errorHandler, notFound, createError } from "./middleware/errorHandler";
 import crypto from 'crypto';
@@ -28,6 +28,8 @@ import { publishWebSocketMessage } from './services/redis';
 import { broadcastToUser } from './websocket';
 import { broadcast, WS_EVENTS } from "./websocket";
 import { authLimiter, bookingLimiter } from './middleware/rateLimit';
+import client from 'prom-client';
+const bookingCounter = new client.Counter({ name: 'eventapp_bookings_total', help: 'Total successful bookings' });
 import rateLimit from 'express-rate-limit';
 import { recordAudit } from './services/audit';
 
@@ -63,8 +65,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         password: hashedPassword,
       });
 
-      // Generate token
-      const token = generateToken(user);
+  // Generate tokens
+  const token = generateToken(user);
+  const { token: refreshToken, expiresAt } = await createRefreshToken(user.id);
 
       res.status(201).json({
         success: true,
@@ -76,11 +79,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             isAdmin: user.isAdmin,
           },
           token,
+          refreshToken,
+          refreshExpiresAt: expiresAt,
         },
       });
     } catch (error) {
       next(error);
     }
+  });
+
+  // Refresh access token
+  app.post('/api/auth/refresh', async (req,res,next)=>{
+    try {
+      const { refreshToken } = req.body || {};
+      if (!refreshToken) return res.status(400).json({ message: 'Missing refreshToken' });
+      const row = await verifyRefreshToken(refreshToken);
+      if (!row) return res.status(401).json({ message: 'Invalid refresh token' });
+      // Rotate
+      await rotateRefreshToken(refreshToken);
+      const user = await storage.getUser(row.userId);
+      if (!user) return res.status(401).json({ message: 'User not found' });
+      const access = generateToken(user);
+      const { token: newRefresh, expiresAt } = await createRefreshToken(user.id);
+      res.json({ success:true, data: { token: access, refreshToken: newRefresh, refreshExpiresAt: expiresAt } });
+    } catch (e) { next(e); }
   });
 
   // Admin: promote a user to admin (must already be admin)
@@ -655,18 +677,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw createError("You have already booked this event", 400);
       }
 
-      // Use Redis for optimistic concurrency control
+      // Attempt Redis-based optimistic concurrency first
+      let newSlots: number | null = null;
+      let usedDbFallback = false;
       const cachedSlots = await getEventSlots(eventId);
       const currentSlots = cachedSlots !== null ? cachedSlots : event.availableSlots;
-
       if (currentSlots <= 0) {
         throw createError("Event is fully booked", 400);
       }
-
-      // Decrement slots atomically
-      const newSlots = await decrementEventSlots(eventId);
-      if (newSlots === null || newSlots < 0) {
-        // Restore slot if decrement failed
+      newSlots = await decrementEventSlots(eventId);
+      if (newSlots === null) {
+        // Redis unavailable or error: fallback to DB transactional conditional decrement
+        usedDbFallback = true;
+        const { db } = await import('./db');
+        const { events } = await import('@shared/schema');
+        const { eq, sql } = await import('drizzle-orm');
+        // Perform atomic conditional update: only decrement if slots > 0
+        const result = await db.execute(sql`UPDATE ${events} SET available_slots = available_slots - 1 WHERE id = ${eventId} AND available_slots > 0 RETURNING available_slots` as any);
+        const rows: any[] = (result as any).rows || [];
+        if (!rows.length) {
+          throw createError("Event is fully booked", 400);
+        }
+        newSlots = Number(rows[0].available_slots);
+      } else if (newSlots < 0) {
+        // Defensive: if redis decr went negative, increment back and abort
         await incrementEventSlots(eventId);
         throw createError("Failed to book event, please try again", 500);
       }
@@ -678,8 +712,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           eventId,
         });
 
-        // Update database
-        await storage.updateEventSlots(eventId, newSlots);
+        // Update database if Redis path used (DB fallback already updated DB row)
+        if (!usedDbFallback) {
+          await storage.updateEventSlots(eventId, newSlots);
+        }
 
         // Invalidate event data cache but keep the updated slots
         await invalidateEventData(eventId);
@@ -710,14 +746,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
 
         recordAudit(req.user!.id, 'BOOK_EVENT', 'event', eventId, {});
+        try { bookingCounter.inc(); } catch {}
         res.status(201).json({
           success: true,
           data: booking,
           message: "Event booked successfully",
         });
       } catch (error) {
-        // Restore slot on booking failure
-        await incrementEventSlots(eventId);
+        // Restore slot only if Redis path was used
+        if (!usedDbFallback) {
+          await incrementEventSlots(eventId);
+        }
         throw error;
       }
     } catch (error) {

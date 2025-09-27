@@ -157,3 +157,14 @@ export type BookingWithDetails = Booking & {
   event: Event;
   user: User;
 };
+
+// Refresh token persistence
+export const refreshTokens = pgTable('refresh_tokens', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id),
+  token: varchar('token', { length: 255 }).notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type RefreshToken = typeof refreshTokens.$inferSelect;

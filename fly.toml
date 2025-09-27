@@ -1,0 +1,65 @@
+# Fly.io configuration for Event Booking System
+# Rename "event-booking-system" to your unique app name via: fly launch --name <your-app-name>
+# or manually edit then run: fly apps create <your-app-name>
+
+app = "event-booking-system"
+primary_region = "iad"  # Change to region closest to majority of users (e.g. fra, lhr, sin, syd)
+kill_signal = "SIGINT"
+kill_timeout = 5
+
+[build]
+  # Using Dockerfile in repo root (multi-stage). Omit if using auto buildpacks.
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "5000"
+  # Adjust any tunables here (rate limits, CSP extra origins, etc.)
+
+[[services]]
+  internal_port = 5000
+  protocol = "tcp"
+
+  # Force HTTPS & enable HTTP/2
+  [services.concurrency]
+    hard_limit = 50
+    soft_limit = 40
+    type = "connections"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "10s"
+    restart_limit = 0
+
+  [[services.http_checks]]
+    interval = "20s"
+    timeout = "2s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/healthz"
+    protocol = "http"
+    tls_skip_verify = false
+
+#[checks]
+#  # Optional central readiness check removed; services.http_checks already covers health.
+
+[deploy]
+  # If you add a migration script, you can run it here before promoting new machines
+  # release_command = "node dist/scripts/run-migrations.js"
+
+[metrics]
+  port = 5000
+  path = "/metrics"
+
+# Hints:
+# fly secrets set JWT_SECRET=... DATABASE_URL=... REDIS_URL=... REFRESH_TOKEN_SECRET=... --app <app-name>
+# fly scale vm shared-cpu-1x --memory 256 --app <app-name>
+# For Free tier keep low resource usage. Add a volume only if you later need persistence (not needed now).

@@ -1,6 +1,8 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { User } from '@shared/schema';
+import { User, refreshTokens } from '@shared/schema';
+import { db } from '../db';
+import crypto from 'crypto';
 
 // Enforce strong JWT secret at module load so a misconfiguration fails fast.
 const rawSecret = process.env.JWT_SECRET;
@@ -39,6 +41,31 @@ export const verifyToken = (token: string): any => {
   } catch (error) {
     throw new Error('Invalid token');
   }
+};
+
+// Refresh token (persisted) helpers
+const REFRESH_TTL_DAYS = 14;
+
+export const createRefreshToken = async (userId: number) => {
+  const token = crypto.randomBytes(48).toString('hex');
+  const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000);
+  await db.insert(refreshTokens).values({ userId, token, expiresAt });
+  return { token, expiresAt };
+};
+
+export const rotateRefreshToken = async (oldToken: string) => {
+  const { sql } = await import('drizzle-orm');
+  // Delete old & issue new (simple rotation)
+  await db.execute(sql`DELETE FROM refresh_tokens WHERE token = ${oldToken}` as any);
+};
+
+export const verifyRefreshToken = async (token: string) => {
+  const { eq } = await import('drizzle-orm');
+  const rows = await db.select().from(refreshTokens).where(eq(refreshTokens.token, token));
+  if (!rows.length) return null;
+  const row: any = rows[0];
+  if (row.expiresAt && new Date(row.expiresAt).getTime() < Date.now()) return null;
+  return row;
 };
 
 export interface AuthUser {

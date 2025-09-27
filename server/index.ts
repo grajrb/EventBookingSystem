@@ -6,18 +6,39 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { baseLimiter } from './middleware/rateLimit';
 import { registerRoutes } from "./routes";
-import { serveStatic, setupVite, log } from "./vite";
+import { serveStatic, setupVite } from "./vite";
+import { logger } from './logger';
 import { setupWebSocketServer } from "./websocket";
 import fs from 'fs';
 import path from 'path';
 import { errorHandler, notFound } from "./middleware/errorHandler";
+import client from 'prom-client';
 
 const app = express();
 // Trust proxy for correct IPs & protocol when behind reverse proxy (adjust if not needed)
 app.set('trust proxy', 1);
 
 // Security headers
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+// Derive CSP directives (basic; can be tightened per deployment). Allow self + specified origins for scripts/styles.
+const cspAllowed = (process.env.CSP_EXTRA_ORIGINS || '').split(',').map(s=>s.trim()).filter(Boolean);
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      "default-src": ["'self'"],
+      "script-src": ["'self'", "'unsafe-inline'", ...cspAllowed],
+      "style-src": ["'self'", "'unsafe-inline'", ...cspAllowed],
+      "img-src": ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+      "font-src": ["'self'", 'https:', 'data:'],
+      "connect-src": ["'self'", 'ws:', 'wss:', ...cspAllowed],
+      "object-src": ["'none'"],
+      "base-uri": ["'self'"],
+      "frame-ancestors": ["'self'"],
+      // Allow WebSocket upgrades from same origin; dynamic host handled by browser with 'self'.
+    }
+  }
+}));
 
 // Compression for responses
 app.use(compression());
@@ -28,6 +49,26 @@ app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
 // Global basic rate limiter (more specific ones mounted in routes.ts)
 app.use('/api', baseLimiter);
+
+// Prometheus metrics setup
+const collectDefault = client.collectDefaultMetrics;
+collectDefault({ prefix: 'eventapp_' });
+const httpRequests = new client.Counter({ name: 'eventapp_http_requests_total', help: 'Total HTTP requests', labelNames: ['method','route','status'] });
+const httpDuration = new client.Histogram({ name: 'eventapp_http_request_duration_seconds', help: 'Request duration seconds', buckets: [0.05,0.1,0.2,0.5,1,2,5] });
+
+app.use((req,res,next)=>{
+  const end = httpDuration.startTimer();
+  res.on('finish', ()=>{
+    httpRequests.inc({ method: req.method, route: req.route?.path || req.path, status: res.statusCode });
+    end();
+  });
+  next();
+});
+
+app.get('/metrics', async (_req,res)=>{
+  res.set('Content-Type', client.register.contentType);
+  res.end(await client.register.metrics());
+});
 
 // Avoid noisy 404 logs for favicon
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
@@ -75,7 +116,7 @@ app.use((req, res, next) => {
         logLine = logLine.slice(0, 79) + "…";
       }
 
-      log(logLine);
+  logger.info({ msg: 'request', line: logLine, method: req.method, path, status: res.statusCode, duration }, 'api');
     }
   });
 
@@ -143,7 +184,7 @@ app.use((req, res, next) => {
     // It is the only port that is not firewalled.
     const port = Number(process.env.PORT) || 5000;
     server.listen(port, "0.0.0.0", () => {
-      log(`serving on port ${port} (env PORT=${process.env.PORT || 'unset'})`);
+  logger.info({ port, envPort: process.env.PORT }, 'server.listening');
     });
   } catch (error) {
     console.error('Failed to start server:', error);
