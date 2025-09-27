@@ -818,9 +818,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
     
-      // Health check or root route
-      app.get('/', (req, res) => {
-        res.send('Event Booking System API is running.');
+      // API base info endpoint (moved off '/' so that '/' can serve the SPA in production)
+      app.get('/api', (_req, res) => {
+        res.json({
+          name: 'Event Booking System API',
+          status: 'ok',
+          docs: '/api/docs (not implemented yet)',
+          time: new Date().toISOString()
+        });
       });
 
       // (Removed local notFound/errorHandler registration; global handlers are attached in server/index.ts)
