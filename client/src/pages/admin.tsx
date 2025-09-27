@@ -28,6 +28,7 @@ import {
 import EventForm from "../components/event-form";
 import AttendeeList from "../components/attendee-list";
 import { eventsAPI, adminAPI } from "../lib/api";
+import { showApiError } from '@/lib/errors';
 import { useToast } from "@/hooks/use-toast";
 import type { Event, User } from "../types";
 import type { BookingWithDetails } from "../components/attendee-list";
@@ -78,12 +79,8 @@ export default function Admin() {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+    onError: (error: any) => {
+      showApiError(toast, error, 'Failed to delete event');
     },
   });
 
@@ -93,9 +90,7 @@ export default function Admin() {
       toast({ title: 'User Promoted', description: 'User has been granted admin privileges.' });
       refetchUsers();
     },
-    onError: (error: Error) => {
-      toast({ title: 'Promotion Failed', description: error.message, variant: 'destructive' });
-    },
+    onError: (error: any) => { showApiError(toast, error, 'Failed to promote user'); },
   });
 
   const demoteMutation = useMutation({
@@ -104,15 +99,13 @@ export default function Admin() {
       toast({ title: 'User Demoted', description: 'Admin privileges removed.' });
       refetchUsers();
     },
-    onError: (error: Error) => {
-      toast({ title: 'Demotion Failed', description: error.message, variant: 'destructive' });
-    },
+    onError: (error: any) => { showApiError(toast, error, 'Failed to demote user'); },
   });
 
   const deleteUserMutation = useMutation({
     mutationFn: (id: number) => adminAPI.deleteUser(id),
     onSuccess: () => { toast({ title: 'User Deleted' }); refetchUsers(); },
-    onError: (e: any) => { toast({ title:'Delete Failed', description:e.message, variant:'destructive' }); }
+    onError: (e: any) => { showApiError(toast, e, 'Failed to delete user'); }
   });
 
   const stats = statsData?.data;
@@ -204,11 +197,7 @@ export default function Admin() {
         description: "Your bookings have been exported to CSV",
       });
     } catch (error) {
-      toast({
-        title: "Export Failed",
-        description: "There was an error exporting the bookings",
-        variant: "destructive",
-      });
+      showApiError(toast, error, 'Export failed');
     }
   };
 

@@ -2,6 +2,7 @@ import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "./hooks/use-auth.tsx";
 import { WebSocketProvider } from "./hooks/use-websocket-context";
@@ -88,14 +89,16 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <WebSocketProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Router />
-          </TooltipProvider>
-        </WebSocketProvider>
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <WebSocketProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Router />
+            </TooltipProvider>
+          </WebSocketProvider>
+        </AuthProvider>
+      </ErrorBoundary>
     </QueryClientProvider>
   );
 }

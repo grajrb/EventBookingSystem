@@ -87,9 +87,33 @@ function firstDetail(err: ApiError): string | undefined {
 export function showApiError(toast: (cfg: any)=>void, err: unknown, fallback?: string) {
   if (err instanceof ApiError) {
     const mapped = mapApiError(err);
+    recordApiError(err.code);
     toast({ title: mapped.title, description: mapped.description, variant: mapped.variant || (err.status >=500? 'destructive': 'default') });
     return;
   }
   const msg = (err as any)?.message || fallback || 'Error performing request';
   toast({ title: 'Error', description: msg, variant: 'destructive' });
+}
+
+// --- Lightweight in-memory metrics ---
+declare global { interface Window { __APP_ERROR_METRICS__?: { apiErrorCounts: Record<string, number>; unhandledRender: number }; } }
+
+if (typeof window !== 'undefined') {
+  if (!window.__APP_ERROR_METRICS__) {
+    window.__APP_ERROR_METRICS__ = { apiErrorCounts: {}, unhandledRender: 0 };
+  }
+}
+
+export function recordApiError(code: string) {
+  try {
+    if (typeof window === 'undefined') return;
+    const store = window.__APP_ERROR_METRICS__;
+    if (!store) return;
+    store.apiErrorCounts[code] = (store.apiErrorCounts[code] || 0) + 1;
+  } catch (_) {}
+}
+
+export function getApiErrorMetrics() {
+  if (typeof window === 'undefined') return { apiErrorCounts: {}, unhandledRender: 0 };
+  return window.__APP_ERROR_METRICS__ || { apiErrorCounts: {}, unhandledRender: 0 };
 }

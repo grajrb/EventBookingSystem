@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { profileAPI } from '@/lib/api';
+import { showApiError } from '@/lib/errors';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -40,7 +41,7 @@ export default function ProfilePage() {
       toast({ title: 'Profile Updated' });
     },
     onError: (err: any) => {
-      toast({ title: 'Update Failed', description: err.message || 'Error', variant: 'destructive' });
+      showApiError(toast, err, 'Failed to update profile');
     }
   });
 

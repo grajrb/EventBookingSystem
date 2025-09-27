@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { eventsAPI } from "../lib/api";
+import { showApiError } from '@/lib/errors';
 import { useToast } from "@/hooks/use-toast";
 import type { Event } from "../types";
 
@@ -120,12 +121,8 @@ export default function EventForm({ isOpen, onClose, event }: EventFormProps) {
       reset();
       onClose();
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+    onError: (error: any) => {
+      showApiError(toast, error, 'Failed to create event');
     },
   });
 
@@ -147,11 +144,11 @@ export default function EventForm({ isOpen, onClose, event }: EventFormProps) {
       });
       return { prev };
     },
-    onError: (err, _variables, context) => {
+    onError: (err: any, _variables, context) => {
       if (context?.prev) {
         queryClient.setQueryData(["/api/events", 1, ""], context.prev);
       }
-      toast({ title: 'Update Failed', description: (err as Error).message, variant: 'destructive' });
+      showApiError(toast, err, 'Failed to update event');
     },
     onSuccess: () => {
       toast({ title: 'Event Updated', description: 'Event has been updated successfully' });
