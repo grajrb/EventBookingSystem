@@ -851,6 +851,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if booking exists
       const booking = await storage.getBooking(userId, eventId);
+
+  // List current user's bookings (needed for dashboard "My Bookings")
+  app.get('/api/bookings/my', authenticate, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const bookings = await storage.getUserBookings(userId);
+      res.json({ success: true, data: bookings });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // List bookings for a specific event (admin only)
+  app.get('/api/events/:id/bookings', authenticate, requireAdmin, async (req, res, next) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      const bookings = await storage.getEventBookings(eventId);
+      res.json({ success: true, data: bookings });
+    } catch (error) {
+      next(error);
+    }
+  });
       if (!booking) {
         throw createError("Booking not found", 404);
       }

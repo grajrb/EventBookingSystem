@@ -116,9 +116,13 @@ export const loginSchema = z.object({
   password: z.string().min(6),
 });
 
+// Password policy: at least 8 chars, one upper, one lower, one digit, one special
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
 export const registerSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(PASSWORD_REGEX, 'Password must include upper, lower, number & symbol'),
   name: z.string().min(2),
 });
 
@@ -138,7 +142,9 @@ export const profileUpdateSchema = z.object({
 // Account management schemas
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(6, 'Current password required'),
-  newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+  newPassword: z.string()
+    .min(8, 'New password must be at least 8 characters')
+    .regex(PASSWORD_REGEX, 'Password must include upper, lower, number & symbol'),
 });
 
 export const deleteAccountSchema = z.object({

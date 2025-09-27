@@ -9,6 +9,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic, setupVite } from "./vite";
 import { logger } from './logger';
 import { setupWebSocketServer } from "./websocket";
+import { ensureAdmin } from './ensureAdmin';
 import fs from 'fs';
 import path from 'path';
 import { errorHandler, notFound } from "./middleware/errorHandler";
@@ -125,8 +126,12 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
-    // Register API routes first
-    const server = await registerRoutes(app);
+  // Register API routes first
+  const server = await registerRoutes(app);
+
+  // Ensure admin provisioning (idempotent). Runs after DB is ready (routes registration touches DB).
+  // Non-blocking: we await to surface errors before accepting traffic.
+  await ensureAdmin();
 
     // Setup WebSocket server
   const wss = setupWebSocketServer(server);

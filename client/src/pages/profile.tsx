@@ -47,9 +47,12 @@ export default function ProfilePage() {
     }
   });
 
+  const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
   const passwordSchema = z.object({
-    currentPassword: z.string().min(6),
-    newPassword: z.string().min(6),
+    currentPassword: z.string().min(6, 'Current password required'),
+    newPassword: z.string()
+      .min(8, 'At least 8 characters')
+      .regex(PASSWORD_REGEX, 'Must include upper, lower, number & symbol'),
   });
   type PasswordValues = z.infer<typeof passwordSchema>;
   const { register: pwRegister, handleSubmit: handlePwSubmit, reset: resetPw, formState: { errors: pwErrors } } = useForm<PasswordValues>({ resolver: zodResolver(passwordSchema) });
@@ -62,7 +65,7 @@ export default function ProfilePage() {
     onError: (err: any) => showApiError(toast, err, 'Failed to change password')
   });
 
-  const deleteSchema = z.object({ password: z.string().min(6) });
+  const deleteSchema = z.object({ password: z.string().min(6, 'Password required') });
   type DeleteValues = z.infer<typeof deleteSchema>;
   const { register: delRegister, handleSubmit: handleDeleteSubmit, formState: { errors: delErrors }, reset: resetDelete } = useForm<DeleteValues>({ resolver: zodResolver(deleteSchema) });
   const deleteMutation = useMutation({

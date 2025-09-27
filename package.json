@@ -20,7 +20,9 @@
     "test:e2e": "cross-env NODE_ENV=test playwright test",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "deploy": "cd client && npm run build && cd .. && mkdir -p deploy && cp -r client/dist/* deploy/ && touch deploy/.nojekyll"
+    "deploy": "cd client && npm run build && cd .. && mkdir -p deploy && cp -r client/dist/* deploy/ && touch deploy/.nojekyll",
+    "make:admin": "tsx scripts/make-admin.ts",
+    "seed:events": "tsx scripts/seed-events.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",

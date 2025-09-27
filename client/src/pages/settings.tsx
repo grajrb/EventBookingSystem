@@ -12,9 +12,18 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { useAuth } from '@/hooks/use-auth';
 
-const passwordSchema = z.object({ currentPassword: z.string().min(6), newPassword: z.string().min(6) });
-const emailSchema = z.object({ password: z.string().min(6), newEmail: z.string().email() });
-const deleteSchema = z.object({ password: z.string().min(6) });
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
+const passwordSchema = z.object({
+  currentPassword: z.string().min(6, 'Current password required'),
+  newPassword: z.string()
+    .min(8, 'At least 8 characters')
+    .regex(PASSWORD_REGEX, 'Must include upper, lower, number & symbol'),
+});
+const emailSchema = z.object({
+  password: z.string().min(6, 'Password required'),
+  newEmail: z.string().email('Valid email required')
+});
+const deleteSchema = z.object({ password: z.string().min(6, 'Password required') });
 
 type PasswordValues = z.infer<typeof passwordSchema>;
 type EmailValues = z.infer<typeof emailSchema>;

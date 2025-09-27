@@ -15,6 +15,7 @@ import Profile from './pages/profile';
 import Settings from './pages/settings';
 import AuditLogs from './pages/audit-logs';
 import NotFound from "@/pages/not-found";
+import GlobalLoader from './components/global-loader';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -102,6 +103,7 @@ function App() {
             <TooltipProvider>
               <Toaster />
               <Router />
+              <GlobalLoader />
             </TooltipProvider>
           </WebSocketProvider>
         </AuthProvider>
