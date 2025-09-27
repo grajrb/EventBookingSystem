@@ -67,7 +67,9 @@ export default function EventCard({ event: initialEvent }: EventCardProps) {
         title: "Booking Confirmed!",
         description: `Your seat has been reserved for "${event.title}"`,
       });
+      // Refresh events list (slot counts & booked state) and user's bookings dashboard
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/my"] });
     },
     onError: (error: Error) => {
       toast({

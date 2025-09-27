@@ -22,16 +22,16 @@ export default function Home() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [isEventFormOpen, setIsEventFormOpen] = useState(false);
-  const limit = 6;
+  const PAGE_SIZE = 6; // Must stay in sync with backend enforced limit
 
   const { data, isLoading } = useQuery({
     queryKey: ["/api/events", page, search],
-    queryFn: () => eventsAPI.getEvents(page, limit, search || undefined),
+  queryFn: () => eventsAPI.getEvents(page, PAGE_SIZE, search || undefined),
   });
 
   const events = data?.data.events || [];
   const total = data?.data.total || 0;
-  const totalPages = Math.ceil(total / limit);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const handleSearch = (value: string) => {
     setSearch(value);
@@ -118,7 +118,7 @@ export default function Home() {
         {/* Events Grid */}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            {Array.from({ length: 6 }).map((_, i) => (
+            {Array.from({ length: PAGE_SIZE }).map((_, i) => (
               <div key={i} className="space-y-4">
                 <Skeleton className="h-48 w-full" />
                 <Skeleton className="h-4 w-3/4" />
@@ -155,7 +155,7 @@ export default function Home() {
               totalPages={totalPages}
               onPageChange={setPage}
               totalItems={total}
-              itemsPerPage={limit}
+              itemsPerPage={PAGE_SIZE}
             />
           </>
         )}

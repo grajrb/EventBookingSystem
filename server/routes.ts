@@ -493,7 +493,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/events", async (req, res, next) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 6;
+      // Enforce strict page size of 6 regardless of client-provided limit
+      const limit = 6;
       const search = req.query.search as string;
       const userId = req.user?.id;
 
@@ -851,6 +852,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if booking exists
       const booking = await storage.getBooking(userId, eventId);
+      if (!booking) {
+        throw createError("Booking not found", 404);
+      }
+
+      // Delete booking
+      const deleted = await storage.deleteBooking(userId, eventId);
+      if (!deleted) {
+        throw createError("Failed to cancel booking", 500);
+      }
+
+          // Increment available slots
+          await incrementEventSlots(eventId);
+          
+          // Update database
 
   // List current user's bookings (needed for dashboard "My Bookings")
   app.get('/api/bookings/my', authenticate, async (req, res, next) => {
@@ -873,20 +888,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       next(error);
     }
   });
-      if (!booking) {
-        throw createError("Booking not found", 404);
-      }
-
-      // Delete booking
-      const deleted = await storage.deleteBooking(userId, eventId);
-      if (!deleted) {
-        throw createError("Failed to cancel booking", 500);
-      }
-
-          // Increment available slots
-          await incrementEventSlots(eventId);
-          
-          // Update database
           const event = await storage.getEvent(eventId);
           if (event) {
             const cachedSlots = await getEventSlots(eventId);
