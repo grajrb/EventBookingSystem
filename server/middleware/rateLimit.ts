@@ -1,33 +1,51 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { RateLimitRequestHandler } from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import { redisClient as redis } from '../services/redis';
 
+/**
+ * Helper - create a limiter that prefers Redis but gracefully falls back to in-memory
+ */
+function createHybridLimiter(options: { windowMs: number; max: number; message: string }): RateLimitRequestHandler {
+  const useRedis = !!process.env.REDIS_URL && redis && typeof redis.call === 'function';
+  if (useRedis) {
+    try {
+      return rateLimit({
+        store: new (RedisStore as any)({
+          sendCommand: (...args: string[]) => redis.call(args),
+        }),
+        ...options,
+        standardHeaders: true,
+        legacyHeaders: false,
+      });
+    } catch (e) {
+      // fall through to memory store
+    }
+  }
+  // In-memory fallback (per-instance). Good enough for dev or when Redis absent.
+  return rateLimit({
+    ...options,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+}
+
 // Basic rate limiter for all routes
-export const baseLimiter = rateLimit({
-  store: new RedisStore({
-    sendCommand: (...args: string[]) => redis.call(args),
-  }),
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+export const baseLimiter = createHybridLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: 'Too many requests from this IP, please try again later',
 });
 
 // Stricter limiter for authentication routes
-export const authLimiter = rateLimit({
-  store: new RedisStore({
-    sendCommand: (...args: string[]) => redis.call(args),
-  }),
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // Limit each IP to 10 requests per windowMs
+export const authLimiter = createHybridLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
   message: 'Too many authentication attempts, please try again later',
 });
 
 // Limiter for event booking routes
-export const bookingLimiter = rateLimit({
-  store: new RedisStore({
-    sendCommand: (...args: string[]) => redis.call(args),
-  }),
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 50, // Limit each IP to 50 booking requests per windowMs
+export const bookingLimiter = createHybridLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 50,
   message: 'Too many booking attempts, please try again later',
 });

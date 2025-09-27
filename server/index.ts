@@ -156,12 +156,17 @@ app.use((req, res, next) => {
       });
     } else {
       // In development use Vite middleware for HMR and on-the-fly transforms
+      // Provide lightweight health endpoints BEFORE attaching Vite so they don't invoke index.html transform
+      app.get('/healthz', (_req, res) => res.status(200).json({ status: 'ok', env: 'dev' }));
+      app.get('/readyz', (_req, res) => res.status(200).json({ status: 'ready', env: 'dev' }));
+
       await setupVite(app, server);
 
       // SPA fallback: for any non-API, non-static request, let Vite serve index.html
       app.use((req, res, next) => {
         if (req.method !== 'GET') return next();
         if (req.path.startsWith('/api')) return next();
+        if (req.path.startsWith('/healthz') || req.path.startsWith('/readyz')) return next();
         // Vite middleware already attached; just fall through to its * handler
         return next();
       });
