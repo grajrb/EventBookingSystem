@@ -1,36 +1,81 @@
 name: Keep Render Service Warm
 
-# This workflow sends a periodic request to the production site to reduce cold starts.
-# NOTE: Excessive “keep warm” pings may violate some providers’ ToS. Use responsibly.
+# Sends a periodic request to keep the Render service warm and detect real errors.
+# Adds retry / backoff so transient 502/503 during cold start don't fail the workflow.
 
 on:
   schedule:
     # Every 10 minutes
     - cron: '*/10 * * * *'
   workflow_dispatch: {}
+  push:
+    paths:
+      - '.github/workflows/keepalive.yml'
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Add random jitter (0-60s) to avoid being a perfect interval
+      - name: Add random jitter (0-60s) to avoid perfect interval
         run: |
           JITTER=$(( RANDOM % 60 ))
           echo "Sleeping for $JITTER seconds to add jitter" 
           sleep $JITTER
-      - name: Curl primary URL (root)
+
+      - name: Curl primary URL with retries
         run: |
           set -e
-          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' https://eventbookingsystem-z33l.onrender.com/)
-          echo "Root status: $HTTP_CODE"
-          if [ "$HTTP_CODE" -ge 500 ]; then
-            echo "Root returned server error" && exit 1
+          URL="https://eventbookingsystem-z33l.onrender.com/"
+          MAX_RETRIES=${MAX_RETRIES:-5}
+          DELAY=${DELAY:-5}
+          ATTEMPT=1
+          echo "Pinging $URL with up to $MAX_RETRIES retries"
+          while [ $ATTEMPT -le $MAX_RETRIES ]; do
+            HTTP_CODE=$(curl -s -o /tmp/root.out -w '%{http_code}' \
+              --connect-timeout 5 --max-time 20 "$URL" || echo "000")
+            echo "Attempt $ATTEMPT: status $HTTP_CODE"
+            # Success range
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+              echo "Root OK"
+              break
+            fi
+            # Fail fast on non-transient 5xx (other than 502/503) or unknown 000
+            if { [ "$HTTP_CODE" -ge 500 ] && [ "$HTTP_CODE" -ne 502 ] && [ "$HTTP_CODE" -ne 503 ]; } || [ "$HTTP_CODE" = "000" ]; then
+              echo "Non-transient server/connection error ($HTTP_CODE); failing fast"
+              head -c 500 /tmp/root.out || true
+              exit 1
+            fi
+            # Retry logic for transient 502/503 or 4xx (treat 429 similarly)
+            if [ $ATTEMPT -eq $MAX_RETRIES ]; then
+              echo "Exceeded retries; last status $HTTP_CODE"
+              head -c 500 /tmp/root.out || true
+              exit 1
+            fi
+            SLEEP=$(( DELAY * ATTEMPT ))
+            echo "Transient status $HTTP_CODE; retrying in $SLEEP s..."
+            sleep $SLEEP
+            ATTEMPT=$(( ATTEMPT + 1 ))
+          done
+          echo "Final status: $HTTP_CODE"
+          if [ "$HTTP_CODE" -ge 400 ]; then
+            echo "Final status still not OK ($HTTP_CODE)" && exit 1
           fi
-      - name: Curl health endpoint
+
+      - name: Curl health endpoint (non-fatal)
         run: |
-          set -e
-          HEALTH_CODE=$(curl -s -o /dev/null -w '%{http_code}' https://eventbookingsystem-z33l.onrender.com/healthz || true)
+          HEALTH_CODE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 10 https://eventbookingsystem-z33l.onrender.com/healthz || echo "000")
           echo "Health status: $HEALTH_CODE"
-          # Don't fail if health endpoint blocked; just log.
+
+      - name: Capture sample body (on success) for observability
+        if: success()
+        run: |
+          head -c 500 /tmp/root.out 2>/dev/null || echo "(No body captured)"
+
       - name: Summary
-        run: echo "Ping complete at $(date -u)"
+        run: echo "Ping complete at $(date -u) with status $HTTP_CODE"
+
+    env:
+      # Allow easy tuning without editing script logic
+      MAX_RETRIES: 5
+      DELAY: 5
