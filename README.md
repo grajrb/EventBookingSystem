@@ -124,122 +124,93 @@ The server now serves:
 * WebSocket endpoint at `/ws`
 * Health endpoints: `/healthz` (liveness) and `/readyz` (readiness)
 
-### Fly.io (Single Runtime) Deployment
+### Render Deployment (Single Service)
 
-This repo includes a `Dockerfile` and `fly.toml` for quick deployment to Fly.io using a single container that serves both API + static client + WebSockets.
+Deploy this application to Render as a single Web Service serving API + static client.
 
-#### 1. Prerequisites
+#### 1. External Services
 
-- Fly CLI installed: <https://fly.io/docs/hands-on/install-flyctl/>
-- Accounts on:
-      - Fly.io (app runtime)
-      - Neon.tech (Postgres) or alternative managed Postgres
-      - Upstash (Redis) or alternative managed Redis (optional but recommended)
+Provision (or reuse):
 
-#### 2. Create External Services
+- Neon (or other managed Postgres) – obtain connection string with `sslmode=require` if needed.
+- Upstash Redis (or any managed Redis) for caching + slot concurrency (optional but recommended; app will fallback without Redis with reduced concurrency guarantees).
 
-1. Create a Neon Postgres project & database.
-2. Copy the connection string (e.g. `postgresql://user:pass@ep-xxxx-pooler.us-east-2.aws.neon.tech/db?sslmode=require`). Use `sslmode=require`.
-3. Create an Upstash Redis database; copy the rediss URL (TLS) or redis URL.
+#### 2. Repository & Build
 
-#### 3. (Optional) Run Local Build Test
+Push your code to GitHub (public or private with Render authorized).
 
-```bash
-docker build -t eventapp .
-docker run --rm -p 5000:5000 -e PORT=5000 eventapp
-```
+Render Web Service settings:
 
-Visit <http://localhost:5000> and ensure `/healthz` returns 200.
-
-#### 4. Configure Fly App
+- Environment: Node
+- Build Command:
 
 ```bash
-fly launch --no-deploy
-# If prompted for builder, choose existing Dockerfile.
+npm install && npm run build
 ```
 
-If you already created `fly.toml` (present in repo), ensure the `app` name inside is globally unique. If not, edit it before deploying.
-
-#### 5. Set Secrets
-
-Generate strong secrets (≥ 32 chars) for JWT & refresh tokens.
+- Start Command:
 
 ```bash
-fly secrets set \
-   JWT_SECRET="<long-random>" \
-   REFRESH_TOKEN_SECRET="<long-random>" \
-   DATABASE_URL="<neon-connection-string>" \
-   REDIS_URL="<upstash-redis-url>" \
-   ALLOWED_ORIGINS="https://<your-app>.fly.dev" \
-   CSP_EXTRA_ORIGINS="" \
-   DB_SSL=true
+npm start
 ```
 
-Add any other tunables as needed (e.g., rate limit overrides).
+- Root Directory: repository root (where `package.json` lives)
 
-#### 6. Deploy
+The build script compiles client (Vite) + bundles server (esbuild) into `dist/` and `client/dist/`.
+
+#### 3. Environment Variables (Render Dashboard)
+
+| Variable | Description |
+|----------|-------------|
+| NODE_ENV | production |
+| PORT | Render sets `$PORT`; server uses `process.env.PORT \|\| 5000` |
+| DATABASE_URL | Postgres connection string |
+| DB_SSL | true if provider requires SSL (Neon yes) |
+| REDIS_URL | Redis endpoint (if using) |
+| JWT_SECRET | ≥32 char random secret |
+| REFRESH_TOKEN_SECRET | Separate ≥32 char random secret |
+| ALLOWED_ORIGINS | Your Render domain (e.g. `https://your-app.onrender.com`) |
+| CSP_EXTRA_ORIGINS | Additional origins for CSP if needed |
+
+#### 4. First Deploy
+
+Render will detect changes and build automatically on creation. Watch build logs until it starts listening. After deployment, visit:
+
+```text
+https://<your-app>.onrender.com/healthz
+```
+Expect JSON `{"status":"ok"}`.
+
+#### 5. Database Schema
+
+If the database is empty (first deploy), run a one-off shell in Render or locally with the same DATABASE_URL:
 
 ```bash
-fly deploy
+npm run db:push
 ```
+(Render: use the Shell tab if available, or temporarily add a build step; long-term prefer migration files.)
 
-After the first deploy Fly assigns a free TLS domain: `https://<app-name>.fly.dev`.
+#### 6. Static Assets & SPA
 
-#### 7. Database Migrations
+The server serves `client/dist` directly in production. No extra CDN required initially. Add a CDN later if needed by placing it in front of the Render service.
 
-If using Drizzle push:
+#### 7. Logging & Metrics
 
-```bash
-fly ssh console -C "cd /workspace && npm run db:push"
-```
+View structured logs in Render dashboard. Prometheus metrics are at `/metrics`; to restrict access, add an auth layer or IP filtering at a proxy/CDN.
 
-Alternatively, integrate a release command (commented in `fly.toml`). For production consider schema migrations via migration files rather than push.
+#### 8. Scaling & Performance
 
-#### 8. Scaling & Resources
+- Start with the free instance tier (auto-sleeps). For always-on, upgrade plan.
+- If memory pressure occurs, optimize dependencies or upgrade instance size.
+- Redis strongly recommended before adding multiple instances.
 
-Start small (shared-cpu-1x):
+#### 9. Custom Domain
 
-```bash
-fly scale vm shared-cpu-1x --memory 256
-```
+Add your domain in Render settings; update `ALLOWED_ORIGINS` and optionally `CSP_EXTRA_ORIGINS` to include it.
 
-Add regions later:
+#### 10. Refresh Token Table Reminder
 
-```bash
-fly regions add fra lhr
-```
-
-Ensure Redis latency remains low relative to app region.
-
-#### 9. Logs & Metrics
-
-```bash
-fly logs
-```
-
-Metrics exposed at `https://<app>.fly.dev/metrics` (protect via token or private scraping in production—Fly private networking or an auth middleware tweak).
-
-#### 10. Custom Domain (Optional)
-
-Add a domain:
-
-```bash
-fly certs create app.example.com
-```
-
-Then set the DNS CNAME/A per Fly instructions. TLS handled automatically.
-
-#### 11. Health Checks
-
-Fly uses `/healthz`; ensure it returns 200. If you add readiness logic, you can expose `/readyz` and update `fly.toml` accordingly.
-
-#### 12. Zero-Downtime Migrations (Future)
-
-If you introduce breaking DDL changes, add a `release_command` in `fly.toml` to run migrations before new machines start serving traffic.
-
-#### 13. Refresh Token Table Reminder
-
-Ensure the refresh token table/schema exists and migrations have run before enabling clients to refresh. If absent, add table definition to `shared/schema.ts` and run push/migrate prior to production traffic.
+Ensure refresh token table exists in `shared/schema.ts` (if you added it) and that `db:push` has applied it. Without it, refresh flow will fail.
 
 ---
 
@@ -461,6 +432,3 @@ Access tokens (JWT) expire in 7d. A refresh token (stored server-side) enables r
 
 Future enhancements: Device tracking, refresh token revocation list, shorter access token lifetime (<1h) with auto silent refresh.
 
-## Fly Domain & TLS
-
-Fly automatically provisions a TLS certificate for `<app-name>.fly.dev`. You can map a custom domain at any time (see section above) without code changes; environment `ALLOWED_ORIGINS` and `CSP_EXTRA_ORIGINS` should then include that domain.
