@@ -141,12 +141,9 @@ export default function Login() {
                     type="email"
                     {...loginForm.register("email")}
                     placeholder="Enter your email"
+                    aria-invalid={!!loginForm.formState.errors.email}
+                    aria-describedby={loginForm.formState.errors.email ? 'login-email-error' : undefined}
                   />
-                  {loginForm.formState.errors.email && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {loginForm.formState.errors.email.message}
-                    </p>
-                  )}
                 </div>
 
                 <div>
@@ -157,6 +154,8 @@ export default function Login() {
                       type={showPassword ? "text" : "password"}
                       {...loginForm.register("password")}
                       placeholder="Enter your password"
+                      aria-invalid={!!loginForm.formState.errors.password}
+                      aria-describedby={loginForm.formState.errors.password ? 'login-password-error' : undefined}
                     />
                     <Button
                       type="button"
@@ -168,11 +167,6 @@ export default function Login() {
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
-                  {loginForm.formState.errors.password && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {loginForm.formState.errors.password.message}
-                    </p>
-                  )}
                 </div>
 
                 <Button type="submit" className="w-full">
