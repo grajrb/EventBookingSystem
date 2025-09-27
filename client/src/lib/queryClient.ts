@@ -1,4 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { ApiError, parseErrorResponse } from './errors';
 
 // API base URL configuration
 // In production we either:
@@ -10,8 +11,8 @@ export const API_BASE_URL = (configured && configured.trim()) ? configured.repla
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    const text = await res.text();
+    throw parseErrorResponse(res.status, text || res.statusText);
   }
 }
 
@@ -22,7 +23,9 @@ export async function apiRequest(
 ): Promise<Response> {
   const token = localStorage.getItem("token");
   
-  const res = await fetch(`${API_BASE_URL}${url}`, {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${url}`, {
     method,
     headers: {
       ...(data ? { "Content-Type": "application/json" } : {}),
@@ -31,6 +34,10 @@ export async function apiRequest(
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
+  } catch (networkErr: any) {
+    // Network / CORS error
+    throw new ApiError(networkErr.message || 'Network request failed', 'NETWORK_ERROR', 0, undefined, networkErr);
+  }
 
   await throwIfResNotOk(res);
   return res;
@@ -44,12 +51,17 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const token = localStorage.getItem("token");
     
-    const res = await fetch(`${API_BASE_URL}${queryKey[0]}` as string, {
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE_URL}${queryKey[0]}` as string, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       credentials: "include",
     });
+    } catch (e: any) {
+      throw new ApiError(e.message || 'Network request failed', 'NETWORK_ERROR', 0, undefined, e);
+    }
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;

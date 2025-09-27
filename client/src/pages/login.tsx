@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "../hooks/use-auth.tsx";
+import { ApiError, mapApiError, showApiError } from '@/lib/errors';
 import { useToast } from "@/hooks/use-toast";
 
 const loginSchema = z.object({
@@ -67,12 +68,16 @@ export default function Login() {
     try {
       setError("");
       await login(data.email, data.password);
-      toast({
-        title: "Welcome back!",
-        description: "You have successfully logged in.",
-      });
+      toast({ title: "Welcome back!", description: "You have successfully logged in." });
     } catch (err: any) {
-      setError(err.message || "Login failed");
+      if (err instanceof ApiError) {
+        const mapped = mapApiError(err);
+        setError(mapped.description || mapped.title);
+        toast({ title: mapped.title, description: mapped.description, variant: mapped.variant });
+      } else {
+        setError(err.message || "Login failed");
+        toast({ title: 'Login Failed', description: err.message || 'Unable to login', variant: 'destructive' });
+      }
     }
   };
 
@@ -80,12 +85,16 @@ export default function Login() {
     try {
       setError("");
       await register(data.email, data.password, data.name);
-      toast({
-        title: "Account created!",
-        description: "Welcome to EventHub. You can now start booking events.",
-      });
+      toast({ title: "Account created!", description: "Welcome to EventHub. You can now start booking events." });
     } catch (err: any) {
-      setError(err.message || "Registration failed");
+      if (err instanceof ApiError) {
+        const mapped = mapApiError(err);
+        setError(mapped.description || mapped.title);
+        toast({ title: mapped.title, description: mapped.description, variant: mapped.variant });
+      } else {
+        setError(err.message || "Registration failed");
+        toast({ title: 'Registration Failed', description: err.message || 'Unable to register', variant: 'destructive' });
+      }
     }
   };
 
