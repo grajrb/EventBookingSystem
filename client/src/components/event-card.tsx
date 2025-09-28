@@ -62,22 +62,61 @@ export default function EventCard({ event: initialEvent }: EventCardProps) {
 
   const bookMutation = useMutation({
     mutationFn: () => eventsAPI.bookEvent(event.id),
-    onSuccess: () => {
-      toast({
-        title: "Booking Confirmed!",
-        description: `Your seat has been reserved for "${event.title}"`,
-      });
-      // Refresh events list (slot counts & booked state) and user's bookings dashboard
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings/my"] });
+    onMutate: async () => {
+      // Cancel outgoing fetches so we safely manipulate cache
+      await queryClient.cancelQueries({ queryKey: ["/api/bookings/my"] });
+      await queryClient.cancelQueries({ queryKey: ["/api/events"] });
+
+      const prevBookings = queryClient.getQueryData<any>(["/api/bookings/my"]);
+      const prevEvents = queryClient.getQueryData<any>(["/api/events", 1, ""]);
+
+      // Optimistically add booking entry if not present
+      const optimisticBooking = {
+        id: Math.random() * 1e9 * -1, // temporary negative-ish id
+        userId: 0, // not needed for display
+        eventId: event.id,
+        status: 'confirmed',
+        createdAt: new Date().toISOString(),
+        event: { ...event, isBooked: true, availableSlots: Math.max(0, event.availableSlots - 1) },
+      };
+
+      if (prevBookings?.data) {
+        queryClient.setQueryData(["/api/bookings/my"], {
+          ...prevBookings,
+          data: [optimisticBooking, ...prevBookings.data],
+        });
+      }
+
+      // Update events list cached pages (we don't know page/search keys generically; invalidate later)
+      setEvent(prev => ({ ...prev, isBooked: true, availableSlots: Math.max(0, prev.availableSlots - 1) }));
+
+      return { prevBookings, prevEvents };
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _vars, ctx) => {
+      // Rollback
+      if (ctx?.prevBookings) queryClient.setQueryData(["/api/bookings/my"], ctx.prevBookings);
       toast({
         title: "Booking Failed",
         description: error.message,
         variant: "destructive",
       });
     },
+    onSuccess: (res) => {
+      toast({
+        title: "Booking Confirmed!",
+        description: `Your seat has been reserved for "${event.title}"`,
+      });
+      // Replace optimistic temp booking if needed
+      const current = queryClient.getQueryData<any>(["/api/bookings/my"]);
+      if (current?.data) {
+        const replaced = current.data.map((b: any) => b.eventId === event.id && b.id < 0 ? { ...b, id: res.data.id } : b);
+        queryClient.setQueryData(["/api/bookings/my"], { ...current, data: replaced });
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/my"] });
+    }
   });
 
   const formatDate = (dateString: string) => {

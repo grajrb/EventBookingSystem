@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from 'react';
 import { Calendar, CheckCircle, Star, ExternalLink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,10 +24,18 @@ export default function Dashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: bookingsData, isLoading } = useQuery({
+  const { data: bookingsData, isLoading, refetch: refetchBookings } = useQuery({
     queryKey: ["/api/bookings/my"],
     queryFn: bookingsAPI.getMyBookings,
+    refetchOnWindowFocus: true,
   });
+
+  // Auto refetch when tab becomes visible again
+  useEffect(() => {
+    const handler = () => { if (document.visibilityState === 'visible') { refetchBookings(); } };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [refetchBookings]);
 
   const cancelMutation = useMutation({
     mutationFn: (eventId: number) => eventsAPI.cancelBooking(eventId),
@@ -99,11 +108,18 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-slate-50">
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-slate-900">My Bookings</h2>
-          <p className="mt-2 text-lg text-slate-600">
-            Manage your event reservations
-          </p>
+        <div className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <div>
+            <h2 className="text-3xl font-bold text-slate-900">My Bookings</h2>
+            <p className="mt-2 text-lg text-slate-600">
+              Manage your event reservations
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={() => refetchBookings()} disabled={isLoading}>
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {/* Booking Stats */}

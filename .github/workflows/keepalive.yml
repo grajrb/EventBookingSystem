@@ -1,12 +1,14 @@
 name: Keep Render Service Warm
 
-# Sends a periodic request to keep the Render service warm and detect real errors.
-# Adds retry / backoff so transient 502/503 during cold start don't fail the workflow.
+# Goal: reduce cold-start latency by periodically hitting the public endpoints.
+# NOTE: Free Render instances are still eligible for spin-down; this only *reduces* the
+# chance of long cold starts. Abuse (very frequent pings) may violate provider ToS.
+# Be conservative: a few varied requests per hour rather than constant hammering.
 
 on:
   schedule:
-    # Every 10 minutes
-    - cron: '*/10 * * * *'
+    # Every 12 minutes (5 per hour). Adjust cautiously; too aggressive may be flagged.
+    - cron: '*/12 * * * *'
   workflow_dispatch: {}
   push:
     paths:
@@ -22,6 +24,14 @@ jobs:
           JITTER=$(( RANDOM % 60 ))
           echo "Sleeping for $JITTER seconds to add jitter" 
           sleep $JITTER
+
+      - name: Prepare random paths
+        id: prep
+        run: |
+          # Small set of paths to vary caching layers & hit dynamic code
+            PATHS=( "/" "/healthz" "/readyz" "/api/events?page=1" "/api/events?page=2" )
+            PICK=${PATHS[$RANDOM % ${#PATHS[@]}]}
+            echo "random_path=$PICK" >> $GITHUB_OUTPUT
 
       - name: Curl primary URL with retries
         run: |
@@ -62,6 +72,18 @@ jobs:
             echo "Final status still not OK ($HTTP_CODE)" && exit 1
           fi
 
+      - name: Hit randomized path (non-fatal)
+        run: |
+          TARGET="https://eventbookingsystem-z33l.onrender.com${{ steps.prep.outputs.random_path }}"
+          UA="KeepAliveBot/1.0 (+https://github.com/${{ github.repository }})"
+          CODE=$(curl -A "$UA" -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 15 "$TARGET" || echo "000")
+          echo "Random path: $TARGET -> $CODE"
+
+      - name: HEAD ping (non-fatal)
+        run: |
+          CODE=$(curl -I -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 10 https://eventbookingsystem-z33l.onrender.com/ || echo "000")
+          echo "HEAD status: $CODE"
+
       - name: Curl health endpoint (non-fatal)
         run: |
           HEALTH_CODE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 10 https://eventbookingsystem-z33l.onrender.com/healthz || echo "000")
@@ -73,9 +95,12 @@ jobs:
           head -c 500 /tmp/root.out 2>/dev/null || echo "(No body captured)"
 
       - name: Summary
-        run: echo "Ping complete at $(date -u) with status $HTTP_CODE"
+        run: |
+          echo "Ping complete at $(date -u) root=$HTTP_CODE"
+          echo "Random path was ${{ steps.prep.outputs.random_path }}"
 
     env:
       # Allow easy tuning without editing script logic
       MAX_RETRIES: 5
       DELAY: 5
+      # Future: add SECRET_HEADER if you deploy a private diagnostic endpoint
